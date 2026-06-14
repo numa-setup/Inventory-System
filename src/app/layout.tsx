@@ -35,7 +35,10 @@ export default function RootLayout({
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
-      <body className={`${jakarta.variable} ${inter.variable}`}>
+      <body
+        className={`${jakarta.variable} ${inter.variable}`}
+        suppressHydrationWarning
+      >
         <Providers>{children}</Providers>
       </body>
     </html>

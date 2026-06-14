@@ -1,12 +1,12 @@
 /**
  * Supabase database types.
  *
- * TEMPORARY STUB — permissive typing so the typed clients compile before the
- * schema is live. After running the migrations, regenerate with:
+ * TEMPORARY: permissive typing so queries compile before generated types exist.
+ * After the schema settled, regenerate fully-typed tables with:
  *
  *   npx supabase gen types typescript --project-id qdftxmdxernjzwipqyrq > src/lib/supabase/types.ts
  *
- * and this stub is replaced with fully-typed tables.
+ * Until then, `Database` is `any` so `.from(...).select(...)` returns loose rows.
  */
 export type Json =
   | string
@@ -16,20 +16,5 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[];
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-export interface Database {
-  public: {
-    Tables: {
-      [key: string]: {
-        Row: Record<string, any>;
-        Insert: Record<string, any>;
-        Update: Record<string, any>;
-        Relationships: [];
-      };
-    };
-    Views: { [key: string]: { Row: Record<string, any> } };
-    Functions: { [key: string]: { Args: Record<string, any>; Returns: any } };
-    Enums: { [key: string]: string };
-    CompositeTypes: Record<string, never>;
-  };
-}
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type Database = any;
