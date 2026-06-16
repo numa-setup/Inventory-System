@@ -13,6 +13,7 @@ import { StatTile } from "@/components/ui/StatTile";
 import { Avatar } from "@/components/ui/Avatar";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { useToast } from "@/components/ui/Toast";
+import { ExportMenu } from "@/components/ui/ExportMenu";
 import { createClient } from "@/lib/supabase/client";
 import { formatPKR } from "@/lib/utils";
 import { createCustomer, recordPayment } from "./actions";
@@ -77,7 +78,20 @@ export function CustomersClient({ rows }: { rows: CustomerRow[] }) {
       <PageHeader
         title="Customers"
         subtitle={`${rows.length} customers · udhaar tracking`}
-        actions={<Button onClick={() => setAddOpen(true)}><Plus className="h-4 w-4" /> Add Customer</Button>}
+        actions={
+          <div className="flex gap-2">
+            <ExportMenu
+              filename="customers"
+              title="Customers & udhaar"
+              columns={[
+                { key: "name", header: "Customer" }, { key: "phone", header: "Phone" },
+                { key: "credit_limit", header: "Credit limit" }, { key: "credit_balance", header: "Owes (udhaar)" },
+              ]}
+              rows={filtered.map((r) => ({ name: r.name, phone: r.phone ?? "", credit_limit: r.credit_limit, credit_balance: r.credit_balance }))}
+            />
+            <Button onClick={() => setAddOpen(true)}><Plus className="h-4 w-4" /> Add Customer</Button>
+          </div>
+        }
       />
 
       <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-3">

@@ -76,4 +76,8 @@ Layout: `Sidebar`, `Topbar`, `AppShell`.
   and CSV. Dependency-free; takes `{ filename, columns, rows, summary }`.
 - `VariantSearch` — scan/search-to-add picker for line items (receiving, POs).
 
+`FilterBar` drives Reports, Dashboard and Orders (date-range); `ExportMenu` is
+wired into Products, Stock, Customers, Purchasing and Orders so any list exports
+the same way (PDF / Excel / CSV). Reuse these on new list/report screens.
+
 Add new primitives here rather than styling ad-hoc, so screens stay consistent.

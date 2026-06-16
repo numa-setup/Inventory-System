@@ -18,6 +18,7 @@ import { StatusPill } from "@/components/ui/StatusPill";
 import { StatTile } from "@/components/ui/StatTile";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { useToast } from "@/components/ui/Toast";
+import { ExportMenu } from "@/components/ui/ExportMenu";
 import { cn, formatPKR, formatNumber } from "@/lib/utils";
 import {
   stockIn, adjustStock, transferStock, cycleCount, getMovementHistory, type MoveRow,
@@ -135,6 +136,21 @@ export function StockClient({
         subtitle="Live on-hand levels per variant — every change is a recorded movement"
         actions={
           <div className="flex flex-wrap gap-2">
+            <ExportMenu
+              filename="stock"
+              title="Stock on hand"
+              columns={[
+                { key: "product", header: "Product" }, { key: "variant", header: "Variant" },
+                { key: "sku", header: "SKU" }, { key: "on_hand", header: "On hand" },
+                { key: "available", header: "Available" }, { key: "avg_cost", header: "Avg cost" },
+                { key: "value", header: "Value" }, { key: "status", header: "Status" },
+              ]}
+              rows={filtered.map((r) => ({
+                product: r.product_name, variant: r.label, sku: r.sku, on_hand: r.on_hand,
+                available: r.available, avg_cost: Math.round(r.avg_cost), value: Math.round(r.value),
+                status: rowStatus(r).replace("_", " "),
+              }))}
+            />
             <Button size="sm" onClick={() => setAction({ type: "in" })}><PackagePlus className="h-4 w-4" /> Stock In</Button>
             <Button size="sm" variant="secondary" onClick={() => setAction({ type: "adjust" })}><SlidersHorizontal className="h-4 w-4" /> Adjust</Button>
             <Button size="sm" variant="secondary" onClick={() => setAction({ type: "transfer" })}><ArrowLeftRight className="h-4 w-4" /> Transfer</Button>

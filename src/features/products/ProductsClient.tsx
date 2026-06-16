@@ -15,6 +15,7 @@ import { Drawer } from "@/components/ui/Drawer";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { useToast } from "@/components/ui/Toast";
+import { ExportMenu } from "@/components/ui/ExportMenu";
 import { cn, formatPKR } from "@/lib/utils";
 import { createProduct, updateVariant, bulkSetPrice, type ProductInput, type VariantInput } from "./actions";
 
@@ -110,9 +111,27 @@ export function ProductsClient({
         title="Products"
         subtitle={`${rows.length} products · ${totalVariants} variants`}
         actions={
-          <Button onClick={() => setOpen(true)}>
-            <Plus className="h-4 w-4" /> Add Product
-          </Button>
+          <div className="flex gap-2">
+            <ExportMenu
+              filename="products"
+              title="Products & variants"
+              columns={[
+                { key: "product", header: "Product" }, { key: "brand", header: "Brand" },
+                { key: "category", header: "Category" }, { key: "variant", header: "Variant" },
+                { key: "sku", header: "SKU" }, { key: "barcode", header: "Barcode" },
+                { key: "cost", header: "Avg cost" }, { key: "price", header: "Price" },
+                { key: "on_hand", header: "On hand" },
+              ]}
+              rows={filtered.flatMap((p) => p.variants.map((v) => ({
+                product: p.name, brand: p.brand ?? "", category: p.category, variant: v.label,
+                sku: v.sku, barcode: v.barcode ?? "", cost: Math.round(v.avg_cost || v.cost),
+                price: v.sale_price, on_hand: v.on_hand,
+              })))}
+            />
+            <Button onClick={() => setOpen(true)}>
+              <Plus className="h-4 w-4" /> Add Product
+            </Button>
+          </div>
         }
       />
 

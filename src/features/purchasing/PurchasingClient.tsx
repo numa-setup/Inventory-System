@@ -19,6 +19,7 @@ import { StatusPill } from "@/components/ui/StatusPill";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { useToast } from "@/components/ui/Toast";
 import { VariantSearch, type VariantSearchItem } from "@/components/ui/VariantSearch";
+import { ExportMenu } from "@/components/ui/ExportMenu";
 import { formatPKR } from "@/lib/utils";
 import { createSupplier, createPurchaseOrder, type SupplierInput } from "./actions";
 
@@ -99,6 +100,16 @@ export function PurchasingClient({
         subtitle="Suppliers, purchase orders and goods receiving"
         actions={
           <div className="flex flex-wrap gap-2">
+            <ExportMenu
+              filename="suppliers"
+              title="Suppliers & payables"
+              columns={[
+                { key: "name", header: "Supplier" }, { key: "contact", header: "Contact" },
+                { key: "phone", header: "Phone" }, { key: "terms", header: "Terms" },
+                { key: "payable", header: "Payable" },
+              ]}
+              rows={suppliers.map((s) => ({ name: s.name, contact: s.contact_person ?? "", phone: s.phone ?? "", terms: s.payment_terms ?? "", payable: s.balance }))}
+            />
             <Button size="sm" variant="secondary" onClick={() => setNewPO(true)}><FileText className="h-4 w-4" /> New PO</Button>
             <Link href="/purchasing/receive"><Button size="sm"><PackageCheck className="h-4 w-4" /> Receive Stock</Button></Link>
           </div>

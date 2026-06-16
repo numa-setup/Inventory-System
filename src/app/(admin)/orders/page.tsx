@@ -1,11 +1,14 @@
 import type { Metadata } from "next";
 import { ClipboardList } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
+import { resolveRange } from "@/lib/dates";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Avatar } from "@/components/ui/Avatar";
+import { FilterBar } from "@/components/ui/FilterBar";
+import { ExportMenu } from "@/components/ui/ExportMenu";
 import { formatPKR } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Orders" };
@@ -17,25 +20,53 @@ const COLUMNS: { key: string; label: string; statuses: string[] }[] = [
   { key: "done", label: "Delivered / Closed", statuses: ["DELIVERED", "RETURNED", "RTO", "CANCELLED"] },
 ];
 
-export default async function OrdersPage() {
+type SP = Record<string, string | string[] | undefined>;
+const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) ?? "";
+
+export default async function OrdersPage({ searchParams }: { searchParams: Promise<SP> }) {
+  const sp = await searchParams;
+  const range = resolveRange(one(sp.preset) || "this_year", one(sp.from), one(sp.to));
   const supabase = await createClient();
   const { data: orders } = await supabase
     .from("orders")
     .select("id, order_no, customer_name, status, payment_type, total, created_at")
+    .gte("created_at", range.from.toISOString())
+    .lte("created_at", range.to.toISOString())
     .order("created_at", { ascending: false })
-    .limit(200);
+    .limit(300);
 
   const all = orders ?? [];
 
   return (
     <div>
-      <PageHeader title="Orders & Delivery" subtitle="Online orders flow here from the storefront, in real time" />
+      <PageHeader
+        title="Orders & Delivery"
+        subtitle="Online orders flow here from the storefront, in real time"
+        actions={
+          <ExportMenu
+            filename="orders"
+            title={`Orders · ${range.label}`}
+            columns={[
+              { key: "order_no", header: "Order" }, { key: "customer", header: "Customer" },
+              { key: "status", header: "Status" }, { key: "payment", header: "Payment" },
+              { key: "total", header: "Total" }, { key: "date", header: "Date" },
+            ]}
+            rows={all.map((o) => ({
+              order_no: o.order_no, customer: o.customer_name, status: o.status,
+              payment: o.payment_type, total: Number(o.total),
+              date: new Date(o.created_at).toLocaleDateString("en-PK"),
+            }))}
+          />
+        }
+      />
+
+      <FilterBar className="mb-4" />
 
       {all.length === 0 ? (
         <Card>
           <EmptyState
             icon={ClipboardList}
-            title="No online orders yet"
+            title="No online orders in this period"
             description="When the customer storefront goes live, orders will appear here grouped by status — needs confirmation, ready to pack, in transit, delivered."
           />
         </Card>
