@@ -62,11 +62,18 @@ paint to avoid flash. Toggle lives in the Topbar.
 
 ## Component library (`src/components/ui`)
 
-`Card` family · `Button` · `Input`/`Label`/`FieldError` · `StatTile` ·
-`StatusPill` (+ `STATUS_TONE` map) · `DataTable` · `Avatar` · `EmptyState` ·
-`Skeleton`. Charts: `AreaTrend`, `BarTrend`, `DonutChart`. Layout: `Sidebar`,
-`Topbar`, `AppShell`.
+`Card` family · `Button` · `Input`/`Label`/`FieldError` · `Select` · `StatTile` ·
+`StatusPill` (+ `STATUS_TONE` map) · `DataTable` · `Drawer` · `Toast` · `Avatar` ·
+`EmptyState` · `Skeleton`. Charts: `AreaTrend`, `BarTrend`, `DonutChart`.
+Layout: `Sidebar`, `Topbar`, `AppShell`.
+
+**Shared data-screen components (added round 2):**
+- `FilterBar` — URL-driven date presets (Today / Yesterday / This Week / This
+  Month / This Year / Custom date / Custom range) + optional dimension selects.
+  Writes to the query string; the server re-renders for the new range. Used on
+  every report and list screen. Date logic lives in `src/lib/dates.ts`.
+- `ExportMenu` — Summary PDF (print dialog), Full Excel (`.xls` HTML workbook),
+  and CSV. Dependency-free; takes `{ filename, columns, rows, summary }`.
+- `VariantSearch` — scan/search-to-add picker for line items (receiving, POs).
 
 Add new primitives here rather than styling ad-hoc, so screens stay consistent.
-Still to add as needed: `Drawer`, `Modal`, `Toast`, `FilterBar`, `ExportMenu`,
-`Select`, radar/map charts.
