@@ -10,6 +10,8 @@ all tables.
 - `0005_seed_general_store.sql` — general-store categories + variant sample products
 - `0006_second_location.sql` — adds the Warehouse physical location
 - `0007_purchasing.sql` — rich supplier fields + `supplier_ledger` (payables)
+- `0008_realtime.sql` — adds sales/orders/stock_moves/stock_levels to the
+  `supabase_realtime` publication (live dashboard)
 
 ## Enums
 
