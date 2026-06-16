@@ -8,6 +8,8 @@ all tables.
 - `0003_seed.sql` — locations, categories, sample products, opening stock
 - `0004_variants.sql` — **variant model**; stock moves from product → variant level
 - `0005_seed_general_store.sql` — general-store categories + variant sample products
+- `0006_second_location.sql` — adds the Warehouse physical location
+- `0007_purchasing.sql` — rich supplier fields + `supplier_ledger` (payables)
 
 ## Enums
 
@@ -70,9 +72,16 @@ products ──┬─< product_options ──< product_option_values
 - **product_availability** (view) — same, rolled up per product (back-compat).
 
 ### Purchasing
-- **suppliers**
-- **purchase_orders** / **purchase_order_items** (`received_qty` tracks partials)
-- **goods_receipts** / **goods_receipt_items** — receiving writes stock-in moves + cost.
+- **suppliers** — rich record: `name` (company), `contact_person`, `phone`,
+  `email`, `address`, `city`, `ntn`, `payment_terms`, `bank_details`,
+  `opening_balance`, `balance` (payable; +ve = we owe), `notes`.
+- **supplier_ledger** — `CHARGE` (goods received) / `PAYMENT` (we paid),
+  `balance_after` (running payable). Mirrors `customer_ledger`.
+- **purchase_orders** / **purchase_order_items** — multi-line; `variant_id`;
+  `received_qty` tracks partials; status DRAFT→SENT→PARTIAL→RECEIVED.
+- **goods_receipts** (`total`, `note`) / **goods_receipt_items** (`variant_id`,
+  `lot_id`) — multi-product receiving writes one stock-in move per line,
+  recomputes weighted-average cost, and charges the supplier ledger.
 
 ### Customers & sales
 - **customers** — `credit_limit`, `credit_balance` (udhaar; positive = owes us).
