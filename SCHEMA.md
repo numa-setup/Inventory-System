@@ -6,6 +6,8 @@ all tables.
 - `0001_init.sql` — enums, tables, ledger trigger, availability view
 - `0002_rls.sql` — Row Level Security policies
 - `0003_seed.sql` — locations, categories, sample products, opening stock
+- `0004_variants.sql` — **variant model**; stock moves from product → variant level
+- `0005_seed_general_store.sql` — general-store categories + variant sample products
 
 ## Enums
 
@@ -22,22 +24,50 @@ all tables.
 
 ### Catalogue
 - **locations** — physical + virtual (`PHYSICAL/SUPPLIER/CUSTOMER/LOSS/ADJUSTMENT/TRANSIT`), `code` unique.
-- **categories** — self-referential tree (`parent_id`, `sort`).
-- **products** — `sku` unique, prices, `reorder_point`, `safety_stock`,
-  `track_lots`, `is_variable_weight`. Trigram index on name for search.
-- **product_barcodes** — many per product, `barcode` unique, `is_primary`.
-- **product_units** — carton→piece conversions (`factor`).
-- **lots** — `lot_number`, `expiry_date` (FEFO).
+- **categories** — self-referential tree (`parent_id`, `sort`). Seeded with
+  general-store tree: Cosmetics, Jewellery, Gift Packs, Toys, Accessories,
+  Stationery, Personal Care (+ sub-categories).
+- **products** — PARENT grouping: `name`, `brand`, `category_id`, `description`,
+  `has_variants`, `image_url`, `active`. Keeps `sku`/`default_sale_price` for
+  back-compat (mirrors the default variant). Trigram index on name.
 
-### Inventory ledger (the heart)
-- **stock_moves** — APPEND-ONLY. `qty>0`, `from_location_id`, `to_location_id`,
-  `unit_cost`, `reference_type`, `reference_id`, `source`, `idempotency_key`
-  unique. UPDATE/DELETE blocked by trigger.
-- **stock_levels** — cache: `(product, location, lot)` → `on_hand`, `reserved`,
-  `avg_cost`. Maintained by `apply_stock_move()` AFTER INSERT trigger; unique
-  index `nulls not distinct`.
-- **product_availability** (view) — per-product `on_hand`, `reserved`,
-  `available` (=on_hand−reserved), blended `avg_cost`, physical locations only.
+#### Variant model (`0004`)
+- **product_options** — `(product_id, name)` e.g. "Shade", "Size", `sort`.
+- **product_option_values** — `(option_id, value)` e.g. "Ruby Red", "3.5g".
+- **product_variants** — `sku` unique, `cost`, `sale_price`, `reorder_point`,
+  `is_default` (exactly one per product, partial-unique index), `active`.
+  **Stock lives here, not on products.**
+- **variant_option_values** — `(variant_id, option_value_id)`: which option
+  values define a variant (the cells of the Size × Shade matrix).
+- **product_barcodes** — `barcode` unique, now carries `variant_id` (+ product_id).
+- **lots** — `lot_number`, `expiry_date` (FEFO), now `variant_id`.
+
+Every product has ≥1 variant; non-variant products auto-get one `is_default`
+variant so all downstream logic (stock, POS, receiving, reports) is uniform.
+
+```
+products ──┬─< product_options ──< product_option_values
+           │                                  │
+           └─< product_variants ──< variant_option_values
+                     │  (sku, cost, sale_price, reorder, is_default)
+                     ├─< product_barcodes
+                     ├─< stock_moves / stock_levels  (variant_id)
+                     ├─< sale_items / order_items / reservations
+                     └─< purchase_order_items / goods_receipt_items
+```
+
+### Inventory ledger (the heart) — now variant-keyed
+- **stock_moves** — APPEND-ONLY. `qty>0`, `variant_id` (+product_id), locations,
+  `unit_cost`, `reference_type`, `source`, `idempotency_key` unique.
+  UPDATE/DELETE blocked. `fill_move_variant()` BEFORE-INSERT trigger fills
+  `variant_id` from the product's default variant when callers only pass
+  `product_id` (back-compat) and vice-versa.
+- **stock_levels** — cache: `(variant, location, lot)` → `on_hand`, `reserved`,
+  `avg_cost`. Maintained by `apply_stock_move()` AFTER INSERT; unique index
+  `nulls not distinct`.
+- **variant_availability** (view) — per-variant `on_hand/reserved/available`,
+  blended `avg_cost`, physical locations only.
+- **product_availability** (view) — same, rolled up per product (back-compat).
 
 ### Purchasing
 - **suppliers**
