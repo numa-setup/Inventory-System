@@ -21,6 +21,7 @@ function LoginForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string>();
+  const [notice, setNotice] = useState<string>();
   const [loading, setLoading] = useState(false);
 
   async function onSubmit(e: React.FormEvent) {
@@ -36,6 +37,17 @@ function LoginForm() {
     }
     router.push(params.get("next") ?? "/dashboard");
     router.refresh();
+  }
+
+  async function onForgot() {
+    setError(undefined); setNotice(undefined);
+    if (!email) { setError("Enter your email first, then tap “Forgot password”."); return; }
+    const supabase = createClient();
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+    if (error) { setError(error.message); return; }
+    setNotice("Password reset link sent — check your email.");
   }
 
   return (
@@ -82,7 +94,14 @@ function LoginForm() {
             />
           </div>
 
+          <div className="mt-2 text-right">
+            <button type="button" onClick={onForgot} className="text-xs font-medium text-brand-600 hover:underline">
+              Forgot password?
+            </button>
+          </div>
+
           {error && <FieldError message={error} />}
+          {notice && <p className="mt-1 text-xs text-green-text">{notice}</p>}
 
           <Button type="submit" className="mt-5 w-full" disabled={loading}>
             {loading && <Loader2 className="h-4 w-4 animate-spin" />}
