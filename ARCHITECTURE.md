@@ -55,6 +55,26 @@ Stock is derived, never stored directly:
 Costing method is a `settings` value (Weighted Average default; FIFO
 selectable). LIFO not allowed.
 
+Since `0004` the ledger is **variant-keyed** (`stock_moves.variant_id`,
+`stock_levels` unique on variant+location+lot). A `fill_move_variant()`
+BEFORE-INSERT trigger backfills `variant_id`↔`product_id` so callers can pass
+either. `variant_availability` is the per-variant ATP view;
+`product_availability` rolls it up per product.
+
+### Stock area (`/stock`, `src/features/stock`)
+
+A variant-level workspace. Every action posts an append-only move:
+
+| Action | Ledger move | reference_type |
+|--------|-------------|----------------|
+| Stock In (no PO) | Supplier → location (with cost, optional lot/expiry) | `PURCHASE` |
+| Adjustment | Adjustment → loc (found) / loc → Loss (damage) | `ADJUSTMENT` |
+| Transfer | physical → physical (carries cost) | `TRANSFER` |
+| Cycle count | correcting move vs counted qty | `COUNT` |
+
+`getMovementHistory(variant_id)` powers the per-variant timeline (qty,
+direction, locations, cost, source, actor, time) so the ledger is visible.
+
 ## Routes (current)
 
 | Route | Purpose |

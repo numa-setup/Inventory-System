@@ -1,8 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Search, Boxes, Loader2, Wallet, PackageX, Layers } from "lucide-react";
+import {
+  Search, Loader2, Wallet, PackageX, Layers, AlertTriangle, Info, X,
+  PackagePlus, SlidersHorizontal, ArrowLeftRight, ClipboardCheck, History,
+  ArrowDownLeft, ArrowUpRight, Barcode,
+} from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -12,51 +16,95 @@ import { Drawer } from "@/components/ui/Drawer";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { StatTile } from "@/components/ui/StatTile";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { useToast } from "@/components/ui/Toast";
-import { formatPKR, formatNumber } from "@/lib/utils";
-import { adjustStock } from "./actions";
+import { cn, formatPKR, formatNumber } from "@/lib/utils";
+import {
+  stockIn, adjustStock, transferStock, cycleCount, getMovementHistory, type MoveRow,
+} from "./actions";
+
+export interface PhysLocation { code: string; name: string }
 
 export interface StockRow {
   id: string;
+  variant_id: string;
+  product_id: string;
+  product_name: string;
+  label: string;
   sku: string;
-  name: string;
+  barcode: string | null;
   base_unit: string;
+  category: string;
+  category_id: string | null;
   reorder_point: number;
   on_hand: number;
   reserved: number;
   available: number;
   avg_cost: number;
   value: number;
+  byLocation: { code: string; name: string; on_hand: number }[];
 }
 
-export function StockClient({ rows }: { rows: StockRow[] }) {
+type ActionType = "in" | "adjust" | "transfer" | "count";
+type StatusFilter = "all" | "in_stock" | "low_stock" | "out_of_stock";
+
+function rowStatus(r: StockRow): StatusFilter {
+  if (r.available <= 0) return "out_of_stock";
+  if (r.available <= r.reorder_point) return "low_stock";
+  return "in_stock";
+}
+
+export function StockClient({
+  rows, categories, locations,
+}: {
+  rows: StockRow[];
+  categories: { id: string; name: string }[];
+  locations: PhysLocation[];
+}) {
   const router = useRouter();
   const toast = useToast();
   const [q, setQ] = useState("");
-  const [onlyLow, setOnlyLow] = useState(false);
-  const [adjust, setAdjust] = useState<StockRow | null>(null);
+  const [cat, setCat] = useState("");
+  const [status, setStatus] = useState<StatusFilter>("all");
+  const [loc, setLoc] = useState("");
+  const [action, setAction] = useState<{ type: ActionType; row?: StockRow } | null>(null);
+  const [history, setHistory] = useState<StockRow | null>(null);
+  const [showInfo, setShowInfo] = useState(false);
+
+  useEffect(() => {
+    setShowInfo(localStorage.getItem("stock-explainer-dismissed") !== "1");
+  }, []);
+  const dismissInfo = () => { localStorage.setItem("stock-explainer-dismissed", "1"); setShowInfo(false); };
 
   const filtered = useMemo(() => {
     const term = q.trim().toLowerCase();
     return rows.filter((r) => {
-      if (onlyLow && r.available > r.reorder_point) return false;
+      if (cat && r.category_id !== cat) return false;
+      if (status !== "all" && rowStatus(r) !== status) return false;
+      if (loc && !(r.byLocation.find((l) => l.code === loc)?.on_hand)) return false;
       if (!term) return true;
-      return r.name.toLowerCase().includes(term) || r.sku.toLowerCase().includes(term);
+      return (
+        r.product_name.toLowerCase().includes(term) ||
+        r.label.toLowerCase().includes(term) ||
+        r.sku.toLowerCase().includes(term) ||
+        (r.barcode ?? "").includes(term)
+      );
     });
-  }, [rows, q, onlyLow]);
+  }, [rows, q, cat, status, loc]);
 
   const totalValue = rows.reduce((s, r) => s + r.value, 0);
-  const lowCount = rows.filter((r) => r.available <= r.reorder_point).length;
-  const skuCount = rows.length;
+  const lowCount = rows.filter((r) => rowStatus(r) === "low_stock").length;
+  const outCount = rows.filter((r) => rowStatus(r) === "out_of_stock").length;
 
   const columns: Column<StockRow>[] = [
     {
-      key: "name",
-      header: "Product",
+      key: "name", header: "Product / Variant",
       cell: (r) => (
         <div>
-          <div className="font-medium text-text-primary">{r.name}</div>
-          <div className="text-xs text-text-tertiary">{r.sku}</div>
+          <div className="font-medium text-text-primary">{r.product_name}</div>
+          <div className="flex items-center gap-2 text-xs text-text-tertiary">
+            <span>{r.label}</span><span>·</span><span>{r.sku}</span>
+          </div>
         </div>
       ),
     },
@@ -64,141 +112,423 @@ export function StockClient({ rows }: { rows: StockRow[] }) {
     { key: "reserved", header: "Reserved", align: "right", cell: (r) => <span className="tnum text-text-tertiary">{formatNumber(r.reserved, 2)}</span> },
     { key: "available", header: "Available", align: "right", cell: (r) => <span className="tnum font-medium text-text-primary">{formatNumber(r.available, 2)}</span> },
     { key: "avg_cost", header: "Avg cost", align: "right", cell: (r) => <span className="tnum">{formatPKR(r.avg_cost)}</span> },
-    { key: "value", header: "Stock value", align: "right", cell: (r) => <span className="tnum text-text-primary">{formatPKR(r.value)}</span> },
+    { key: "value", header: "Value", align: "right", cell: (r) => <span className="tnum text-text-primary">{formatPKR(r.value)}</span> },
+    { key: "reorder", header: "Reorder", align: "right", cell: (r) => <span className="tnum text-text-tertiary">{r.reorder_point}</span> },
+    { key: "status", header: "Status", cell: (r) => <StatusPill status={rowStatus(r)} /> },
     {
-      key: "status",
-      header: "Status",
+      key: "actions", header: "", align: "right",
       cell: (r) => (
-        <StatusPill status={r.available <= 0 ? "out_of_stock" : r.available <= r.reorder_point ? "low_stock" : "in_stock"} />
-      ),
-    },
-    {
-      key: "actions",
-      header: "",
-      align: "right",
-      cell: (r) => (
-        <Button size="sm" variant="secondary" onClick={() => setAdjust(r)}>Adjust</Button>
+        <div className="flex justify-end gap-1">
+          <button onClick={() => setHistory(r)} className="rounded-md p-1.5 text-text-tertiary hover:bg-surface-2" title="Movement history">
+            <History className="h-4 w-4" />
+          </button>
+          <Button size="sm" variant="secondary" onClick={() => setAction({ type: "adjust", row: r })}>Adjust</Button>
+        </div>
       ),
     },
   ];
 
   return (
     <div>
-      <PageHeader title="Stock" subtitle="Live on-hand levels, derived from the ledger" />
+      <PageHeader
+        title="Stock"
+        subtitle="Live on-hand levels per variant — every change is a recorded movement"
+        actions={
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" onClick={() => setAction({ type: "in" })}><PackagePlus className="h-4 w-4" /> Stock In</Button>
+            <Button size="sm" variant="secondary" onClick={() => setAction({ type: "adjust" })}><SlidersHorizontal className="h-4 w-4" /> Adjust</Button>
+            <Button size="sm" variant="secondary" onClick={() => setAction({ type: "transfer" })}><ArrowLeftRight className="h-4 w-4" /> Transfer</Button>
+            <Button size="sm" variant="secondary" onClick={() => setAction({ type: "count" })}><ClipboardCheck className="h-4 w-4" /> Cycle Count</Button>
+          </div>
+        }
+      />
 
-      <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+      {showInfo && (
+        <Card className="mb-4 flex items-start gap-3 border-blue-200 bg-blue-tile/40 p-4">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-tile text-blue-text">
+            <Info className="h-5 w-5" />
+          </div>
+          <div className="flex-1 text-sm">
+            <p className="font-medium text-text-primary">Stock is never edited directly.</p>
+            <p className="mt-0.5 text-text-secondary">
+              Every change — receiving, a sale, damage, a transfer or a cycle count — is
+              saved as a <strong>movement</strong> in the ledger. That’s why on-hand
+              numbers are read-only here: use the actions above, and open any row’s
+              <History className="mx-1 inline h-3.5 w-3.5" /> history to see exactly what happened, when and by whom.
+            </p>
+          </div>
+          <button onClick={dismissInfo} className="rounded-md p-1 text-text-tertiary hover:bg-surface-2" aria-label="Dismiss">
+            <X className="h-4 w-4" />
+          </button>
+        </Card>
+      )}
+
+      <div className="mb-4 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatTile label="Stock Value" value={formatPKR(totalValue, { compact: true })} icon={Wallet} accent="blue" />
-        <StatTile label="Low-stock Items" value={lowCount} icon={PackageX} accent="amber" />
-        <StatTile label="SKUs Tracked" value={skuCount} icon={Layers} accent="teal" />
+        <StatTile label="Low-stock" value={lowCount} icon={AlertTriangle} accent="amber" />
+        <StatTile label="Out of stock" value={outCount} icon={PackageX} accent="coral" />
+        <StatTile label="Variants" value={rows.length} icon={Layers} accent="teal" />
       </div>
 
-      <Card className="mb-4 flex flex-col gap-3 p-3 sm:flex-row sm:items-center">
-        <div className="relative flex-1">
+      <Card className="mb-4 grid grid-cols-1 gap-3 p-3 sm:grid-cols-2 lg:grid-cols-[1fr_auto_auto_auto]">
+        <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-tertiary" />
-          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search products…" className="pl-9" />
+          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search product, variant, SKU or barcode…" className="pl-9" />
         </div>
-        <label className="flex cursor-pointer items-center gap-2 text-sm text-text-secondary">
-          <input type="checkbox" checked={onlyLow} onChange={(e) => setOnlyLow(e.target.checked)} className="h-4 w-4 rounded border-border" />
-          Low stock only
-        </label>
+        <Select value={cat} onChange={(e) => setCat(e.target.value)} className="lg:w-52">
+          <option value="">All categories</option>
+          {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </Select>
+        <Select value={status} onChange={(e) => setStatus(e.target.value as StatusFilter)} className="lg:w-40">
+          <option value="all">All statuses</option>
+          <option value="in_stock">In stock</option>
+          <option value="low_stock">Low</option>
+          <option value="out_of_stock">Out</option>
+        </Select>
+        {locations.length > 1 && (
+          <Select value={loc} onChange={(e) => setLoc(e.target.value)} className="lg:w-44">
+            <option value="">All locations</option>
+            {locations.map((l) => <option key={l.code} value={l.code}>{l.name}</option>)}
+          </Select>
+        )}
       </Card>
 
       <Card>
         <DataTable columns={columns} rows={filtered} empty={
-          <span className="text-sm text-text-tertiary">No products match.</span>
+          <EmptyState icon={Layers} title="No stock matches" description="Try clearing filters or search." />
         } />
       </Card>
 
-      <AdjustDrawer
-        row={adjust}
-        onClose={() => setAdjust(null)}
-        onSaved={() => { setAdjust(null); toast("Stock adjusted"); router.refresh(); }}
-        onError={(m) => toast(m, "error")}
-      />
+      {action && (
+        <ActionDrawer
+          type={action.type}
+          preselected={action.row}
+          rows={rows}
+          locations={locations}
+          onClose={() => setAction(null)}
+          onDone={(msg) => { setAction(null); toast(msg); router.refresh(); }}
+          onError={(m) => toast(m, "error")}
+        />
+      )}
+
+      <HistoryDrawer row={history} onClose={() => setHistory(null)} />
     </div>
   );
 }
 
-function AdjustDrawer({
-  row, onClose, onSaved, onError,
+/* ---------------- Variant picker (search + scan) ---------------- */
+
+function VariantPicker({
+  rows, value, onChange,
 }: {
-  row: StockRow | null;
+  rows: StockRow[];
+  value: StockRow | null;
+  onChange: (r: StockRow) => void;
+}) {
+  const [term, setTerm] = useState("");
+  const results = useMemo(() => {
+    const t = term.trim().toLowerCase();
+    if (!t) return rows.slice(0, 8);
+    // exact barcode -> auto pick
+    const exact = rows.find((r) => r.barcode && r.barcode === term.trim());
+    if (exact) return [exact];
+    return rows.filter((r) =>
+      r.product_name.toLowerCase().includes(t) ||
+      r.label.toLowerCase().includes(t) ||
+      r.sku.toLowerCase().includes(t) ||
+      (r.barcode ?? "").includes(t),
+    ).slice(0, 8);
+  }, [rows, term]);
+
+  if (value) {
+    return (
+      <div className="flex items-center justify-between rounded-lg border border-border bg-surface-2 px-3 py-2">
+        <div>
+          <div className="text-sm font-medium text-text-primary">{value.product_name}</div>
+          <div className="text-xs text-text-tertiary">{value.label} · {value.sku} · on hand {formatNumber(value.on_hand, 2)}</div>
+        </div>
+        <button type="button" onClick={() => { onChange(null as never); setTerm(""); }} className="rounded-md p-1 text-text-tertiary hover:bg-surface">
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="relative">
+        <Barcode className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-tertiary" />
+        <Input autoFocus value={term} onChange={(e) => setTerm(e.target.value)} placeholder="Scan barcode or search…" className="pl-9" />
+      </div>
+      <div className="mt-2 max-h-56 overflow-y-auto rounded-lg border border-border">
+        {results.length === 0 ? (
+          <p className="px-3 py-4 text-center text-sm text-text-tertiary">No matches</p>
+        ) : results.map((r) => (
+          <button
+            key={r.variant_id}
+            type="button"
+            onClick={() => onChange(r)}
+            className="flex w-full items-center justify-between border-b border-border/60 px-3 py-2 text-left last:border-0 hover:bg-surface-2"
+          >
+            <div>
+              <div className="text-sm font-medium text-text-primary">{r.product_name}</div>
+              <div className="text-xs text-text-tertiary">{r.label} · {r.sku}</div>
+            </div>
+            <span className="tnum text-xs text-text-tertiary">{formatNumber(r.on_hand, 2)}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- Unified action drawer ---------------- */
+
+const ACTION_META: Record<ActionType, { title: string; cta: string }> = {
+  in: { title: "Stock In", cta: "Post stock-in" },
+  adjust: { title: "Adjustment", cta: "Post adjustment" },
+  transfer: { title: "Transfer", cta: "Post transfer" },
+  count: { title: "Cycle Count", cta: "Post count" },
+};
+
+function ActionDrawer({
+  type, preselected, rows, locations, onClose, onDone, onError,
+}: {
+  type: ActionType;
+  preselected?: StockRow;
+  rows: StockRow[];
+  locations: PhysLocation[];
   onClose: () => void;
-  onSaved: () => void;
+  onDone: (msg: string) => void;
   onError: (m: string) => void;
 }) {
-  const [direction, setDirection] = useState<"add" | "remove">("add");
+  const [variant, setVariant] = useState<StockRow | null>(preselected ?? null);
   const [qty, setQty] = useState("");
-  const [reason, setReason] = useState("");
   const [cost, setCost] = useState("");
+  const [reason, setReason] = useState("");
+  const [direction, setDirection] = useState<"add" | "remove">("add");
+  const [lot, setLot] = useState("");
+  const [expiry, setExpiry] = useState("");
+  const [locCode, setLocCode] = useState(locations[0]?.code ?? "MAIN");
+  const [fromCode, setFromCode] = useState(locations[0]?.code ?? "MAIN");
+  const [toCode, setToCode] = useState(locations[1]?.code ?? locations[0]?.code ?? "MAIN");
+  const [counted, setCounted] = useState("");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string>();
 
+  const meta = ACTION_META[type];
+  const locOnHand = (code: string) => variant?.byLocation.find((l) => l.code === code)?.on_hand ?? 0;
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!row) return;
     setErr(undefined);
-    if (!qty || Number(qty) <= 0) { setErr("Enter a quantity."); return; }
+    if (!variant) { setErr("Pick a variant first."); return; }
     setSaving(true);
-    const res = await adjustStock({
-      product_id: row.id,
-      direction,
-      qty: Number(qty),
-      reason: reason || (direction === "add" ? "Stock found / correction" : "Damage / loss"),
-      unit_cost: cost ? Number(cost) : row.avg_cost,
-    });
+    let res: { ok?: true; error?: string };
+
+    if (type === "in") {
+      res = await stockIn({
+        variant_id: variant.variant_id, product_id: variant.product_id,
+        qty: Number(qty), unit_cost: Number(cost) || 0, location_code: locCode,
+        lot_number: lot || null, expiry: expiry || null,
+        source: variant.barcode ? "SCAN" : "MANUAL",
+      });
+    } else if (type === "adjust") {
+      res = await adjustStock({
+        variant_id: variant.variant_id, product_id: variant.product_id,
+        direction, qty: Number(qty),
+        reason: reason || (direction === "add" ? "Found / correction" : "Damage / loss"),
+        unit_cost: cost ? Number(cost) : variant.avg_cost, location_code: locCode,
+      });
+    } else if (type === "transfer") {
+      res = await transferStock({
+        variant_id: variant.variant_id, product_id: variant.product_id,
+        qty: Number(qty), from_code: fromCode, to_code: toCode, unit_cost: variant.avg_cost,
+      });
+    } else {
+      res = await cycleCount({
+        variant_id: variant.variant_id, product_id: variant.product_id,
+        counted_qty: Number(counted), current_qty: locOnHand(locCode),
+        unit_cost: variant.avg_cost, location_code: locCode,
+      });
+    }
+
     setSaving(false);
     if (res?.error) { setErr(res.error); onError(res.error); return; }
-    setQty(""); setReason(""); setCost(""); setDirection("add");
-    onSaved();
+    onDone(`${meta.title} posted`);
   }
 
   return (
     <Drawer
-      open={!!row}
+      open
       onClose={onClose}
-      title={row ? `Adjust — ${row.name}` : "Adjust"}
+      title={meta.title}
       footer={
         <div className="flex gap-2">
-          <Button variant="secondary" className="flex-1" onClick={onClose}>Cancel</Button>
-          <Button form="adjust-form" type="submit" className="flex-1" disabled={saving}>
-            {saving && <Loader2 className="h-4 w-4 animate-spin" />} Post Adjustment
+          <Button type="button" variant="secondary" className="flex-1" onClick={onClose}>Cancel</Button>
+          <Button type="submit" form="stock-action-form" className="flex-1" disabled={saving || !variant}>
+            {saving && <Loader2 className="h-4 w-4 animate-spin" />} {meta.cta}
           </Button>
         </div>
       }
     >
-      {row && (
-        <form id="adjust-form" onSubmit={submit} className="space-y-4">
-          <div className="rounded-xl border border-border bg-surface-2 p-3 text-sm">
-            <div className="flex justify-between"><span className="text-text-tertiary">Current on-hand</span><span className="tnum font-medium">{row.on_hand} {row.base_unit}</span></div>
-            <div className="mt-1 flex justify-between"><span className="text-text-tertiary">Avg cost</span><span className="tnum">{formatPKR(row.avg_cost)}</span></div>
-          </div>
-          <div>
-            <Label>Adjustment type</Label>
-            <Select value={direction} onChange={(e) => setDirection(e.target.value as "add" | "remove")}>
-              <option value="add">Add (found / correction up)</option>
-              <option value="remove">Remove (damage / loss)</option>
-            </Select>
-          </div>
-          <div>
-            <Label>Quantity ({row.base_unit})</Label>
-            <Input type="number" value={qty} onChange={(e) => setQty(e.target.value)} placeholder="0" />
-          </div>
-          {direction === "add" && (
-            <div>
-              <Label>Cost / unit (₨)</Label>
-              <Input type="number" value={cost} onChange={(e) => setCost(e.target.value)} placeholder={String(row.avg_cost)} />
+      <form id="stock-action-form" onSubmit={submit} className="space-y-4">
+        <div>
+          <Label>Variant</Label>
+          <VariantPicker rows={rows} value={variant} onChange={setVariant} />
+        </div>
+
+        {type === "in" && (
+          <>
+            <div className="grid grid-cols-2 gap-3">
+              <div><Label>Quantity</Label><Input type="number" value={qty} onChange={(e) => setQty(e.target.value)} placeholder="0" /></div>
+              <div><Label>Cost / unit (₨)</Label><Input type="number" value={cost} onChange={(e) => setCost(e.target.value)} placeholder="0" /></div>
             </div>
+            {locations.length > 1 && (
+              <div><Label>Into location</Label>
+                <Select value={locCode} onChange={(e) => setLocCode(e.target.value)}>
+                  {locations.map((l) => <option key={l.code} value={l.code}>{l.name}</option>)}
+                </Select>
+              </div>
+            )}
+            <div className="grid grid-cols-2 gap-3">
+              <div><Label>Lot / batch (optional)</Label><Input value={lot} onChange={(e) => setLot(e.target.value)} placeholder="e.g. B-2206" /></div>
+              <div><Label>Expiry (optional)</Label><Input type="date" value={expiry} onChange={(e) => setExpiry(e.target.value)} /></div>
+            </div>
+            <Hint>Posts <strong>Supplier → {locations.find((l) => l.code === locCode)?.name ?? "Store"}</strong> and updates the weighted-average cost.</Hint>
+          </>
+        )}
+
+        {type === "adjust" && (
+          <>
+            <div><Label>Type</Label>
+              <Select value={direction} onChange={(e) => setDirection(e.target.value as "add" | "remove")}>
+                <option value="add">Add (found / correction up)</option>
+                <option value="remove">Remove (damage / loss)</option>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div><Label>Quantity</Label><Input type="number" value={qty} onChange={(e) => setQty(e.target.value)} placeholder="0" /></div>
+              {direction === "add" && <div><Label>Cost / unit (₨)</Label><Input type="number" value={cost} onChange={(e) => setCost(e.target.value)} placeholder={variant ? String(variant.avg_cost) : "0"} /></div>}
+            </div>
+            <div><Label>Reason</Label><Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Broken during handling" /></div>
+            <Hint>{direction === "add" ? "Adjustment → Store" : "Store → Loss"}. Append-only; stock is never edited directly.</Hint>
+          </>
+        )}
+
+        {type === "transfer" && (
+          <>
+            <div className="grid grid-cols-2 gap-3">
+              <div><Label>From</Label>
+                <Select value={fromCode} onChange={(e) => setFromCode(e.target.value)}>
+                  {locations.map((l) => <option key={l.code} value={l.code}>{l.name}</option>)}
+                </Select>
+                {variant && <p className="mt-1 text-[11px] text-text-tertiary">On hand: {formatNumber(locOnHand(fromCode), 2)}</p>}
+              </div>
+              <div><Label>To</Label>
+                <Select value={toCode} onChange={(e) => setToCode(e.target.value)}>
+                  {locations.map((l) => <option key={l.code} value={l.code}>{l.name}</option>)}
+                </Select>
+              </div>
+            </div>
+            <div><Label>Quantity</Label><Input type="number" value={qty} onChange={(e) => setQty(e.target.value)} placeholder="0" /></div>
+            <Hint>Moves stock between locations, carrying its cost.</Hint>
+          </>
+        )}
+
+        {type === "count" && (
+          <>
+            {locations.length > 1 && (
+              <div><Label>Location</Label>
+                <Select value={locCode} onChange={(e) => setLocCode(e.target.value)}>
+                  {locations.map((l) => <option key={l.code} value={l.code}>{l.name}</option>)}
+                </Select>
+              </div>
+            )}
+            <div className="rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm">
+              <div className="flex justify-between"><span className="text-text-tertiary">System on-hand</span><span className="tnum font-medium">{variant ? formatNumber(locOnHand(locCode), 2) : "—"}</span></div>
+            </div>
+            <div><Label>Counted quantity</Label><Input type="number" value={counted} onChange={(e) => setCounted(e.target.value)} placeholder="0" /></div>
+            {variant && counted !== "" && (
+              <p className="text-sm text-text-secondary">
+                Difference: <span className={cn("tnum font-medium", Number(counted) - locOnHand(locCode) >= 0 ? "text-green-text" : "text-coral-text")}>
+                  {Number(counted) - locOnHand(locCode) >= 0 ? "+" : ""}{formatNumber(Number(counted) - locOnHand(locCode), 2)}
+                </span>
+              </p>
+            )}
+            <Hint>Creates a correcting movement so the system matches your count.</Hint>
+          </>
+        )}
+
+        <FieldError message={err} />
+      </form>
+    </Drawer>
+  );
+}
+
+function Hint({ children }: { children: React.ReactNode }) {
+  return <p className="rounded-lg bg-surface-2 px-3 py-2 text-[11px] text-text-tertiary">{children}</p>;
+}
+
+/* ---------------- Movement history drawer ---------------- */
+
+function HistoryDrawer({ row, onClose }: { row: StockRow | null; onClose: () => void }) {
+  const [moves, setMoves] = useState<MoveRow[] | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    if (row) {
+      setMoves(null);
+      getMovementHistory(row.variant_id).then((m) => { if (active) setMoves(m); });
+    }
+    return () => { active = false; };
+  }, [row]);
+
+  return (
+    <Drawer open={!!row} onClose={onClose} title={row ? `History · ${row.product_name}` : "History"} width="max-w-lg">
+      {row && (
+        <div>
+          <p className="mb-4 text-xs text-text-tertiary">{row.label} · {row.sku}</p>
+          {moves === null ? (
+            <div className="flex justify-center py-10 text-text-tertiary"><Loader2 className="h-5 w-5 animate-spin" /></div>
+          ) : moves.length === 0 ? (
+            <EmptyState icon={History} title="No movements yet" description="Stock actions will appear here." />
+          ) : (
+            <ol className="relative space-y-4 border-l border-border pl-5">
+              {moves.map((m) => (
+                <li key={m.id} className="relative">
+                  <span className={cn(
+                    "absolute -left-[1.6rem] flex h-6 w-6 items-center justify-center rounded-full",
+                    m.direction === "in" ? "bg-green-tile text-green-text" : m.direction === "out" ? "bg-coral-tile text-coral-text" : "bg-blue-tile text-blue-text",
+                  )}>
+                    {m.direction === "in" ? <ArrowDownLeft className="h-3.5 w-3.5" /> : m.direction === "out" ? <ArrowUpRight className="h-3.5 w-3.5" /> : <ArrowLeftRight className="h-3.5 w-3.5" />}
+                  </span>
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <div className="text-sm font-medium text-text-primary">
+                        {m.direction === "in" ? "+" : m.direction === "out" ? "−" : "±"}{formatNumber(m.qty, 2)} {row.base_unit}
+                        <span className="ml-2 text-xs font-normal text-text-tertiary">{m.reference_type.toLowerCase()}</span>
+                      </div>
+                      <div className="text-xs text-text-tertiary">
+                        {(m.from_code ?? "?")} → {(m.to_code ?? "?")}
+                        {m.unit_cost != null ? ` · ${formatPKR(m.unit_cost)}/u` : ""}
+                      </div>
+                      {m.note && <div className="mt-0.5 text-xs text-text-secondary">{m.note}</div>}
+                    </div>
+                    <div className="shrink-0 text-right text-[11px] text-text-tertiary">
+                      <div>{new Date(m.created_at).toLocaleDateString("en-PK", { day: "2-digit", month: "short" })}</div>
+                      <div>{new Date(m.created_at).toLocaleTimeString("en-PK", { hour: "2-digit", minute: "2-digit" })}</div>
+                      <div className="mt-0.5 flex items-center justify-end gap-1">
+                        <span className="rounded bg-surface-2 px-1.5 py-0.5">{m.source.toLowerCase()}</span>
+                      </div>
+                      {m.actor && <div className="mt-0.5">{m.actor}</div>}
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ol>
           )}
-          <div>
-            <Label>Reason / note</Label>
-            <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Broken during handling" />
-          </div>
-          <FieldError message={err} />
-          <p className="text-[11px] text-text-tertiary">
-            This posts an append-only ledger move ({direction === "add" ? "Adjustment → Main" : "Main → Loss"}). Stock is never edited directly.
-          </p>
-        </form>
+        </div>
       )}
     </Drawer>
   );
