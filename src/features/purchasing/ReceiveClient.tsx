@@ -1,9 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Loader2, Trash2, ArrowLeft, PackageCheck, ClipboardList } from "lucide-react";
+import {
+  Loader2, Trash2, ArrowLeft, PackageCheck, ClipboardList, Camera,
+  CheckCircle2, AlertTriangle, ScanLine, Link2, X,
+} from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -12,8 +15,21 @@ import { Select } from "@/components/ui/Select";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { useToast } from "@/components/ui/Toast";
 import { VariantSearch, type VariantSearchItem } from "@/components/ui/VariantSearch";
-import { formatPKR } from "@/lib/utils";
-import { receiveStock } from "./actions";
+import { CameraScanner } from "@/components/scan/CameraScannerLazy";
+import { useCatalog } from "@/lib/useCatalog";
+import { ensureCatalog, lookupByBarcode, type CatalogItem } from "@/lib/catalog-cache";
+import { useHardwareScanner } from "@/lib/useHardwareScanner";
+import { parseScan } from "@/lib/barcode";
+import { beepOk, beepError } from "@/lib/sound";
+import { cn, formatPKR } from "@/lib/utils";
+import { receiveStock, linkBarcode } from "./actions";
+
+function toVS(it: CatalogItem): VariantSearchItem {
+  return {
+    variant_id: it.variant_id, product_id: it.product_id, product_name: it.product_name,
+    label: it.label, sku: it.sku, barcode: it.barcode, cost: it.cost, sale_price: it.price,
+  };
+}
 
 export interface OpenPO {
   id: string;
@@ -53,9 +69,21 @@ export function ReceiveClient({
   const [note, setNote] = useState("");
   const [lines, setLines] = useState<Line[]>([]);
   const [saving, setSaving] = useState(false);
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [lastScan, setLastScan] = useState<{ ok: boolean; text: string } | null>(null);
+  const [pendingUnknown, setPendingUnknown] = useState<string | null>(null);
+  const scanTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useCatalog(); // keep the local catalogue index warm for instant scan resolution
 
   const variantMap = useMemo(() => new Map(variants.map((v) => [v.variant_id, v])), [variants]);
   const chosen = useMemo(() => new Set(lines.map((l) => l.variant_id)), [lines]);
+
+  function flash(ok: boolean, text: string) {
+    setLastScan({ ok, text });
+    if (scanTimer.current) clearTimeout(scanTimer.current);
+    scanTimer.current = setTimeout(() => setLastScan(null), 2200);
+  }
 
   function addLine(v: VariantSearchItem, poItemId: string | null = null, qty = "", cost = "") {
     setLines((ls) => ls.some((l) => l.variant_id === v.variant_id)
@@ -66,6 +94,54 @@ export function ReceiveClient({
           qty, unit_cost: cost || String(v.cost || ""), lot: "", expiry: "",
         }]);
   }
+
+  // Continuous scan-to-receive: a known barcode adds a line or bumps its qty;
+  // a weight-embedded code adds the decoded kg. Unknown codes prompt a link.
+  function bump(v: VariantSearchItem, qty: number, weight: boolean) {
+    setLines((ls) => {
+      const idx = ls.findIndex((l) => l.variant_id === v.variant_id);
+      if (idx >= 0) {
+        const next = [...ls];
+        next[idx] = { ...next[idx], qty: String((Number(next[idx].qty) || 0) + qty) };
+        return next;
+      }
+      return [...ls, {
+        variant_id: v.variant_id, product_id: v.product_id, po_item_id: null,
+        name: v.product_name, label: v.label, sku: v.sku,
+        qty: String(qty), unit_cost: String(v.cost || ""), lot: "", expiry: "",
+      }];
+    });
+    beepOk();
+    flash(true, weight ? `${v.product_name} +${qty.toFixed(3)} kg` : `${v.product_name} +${qty}`);
+  }
+
+  function handleScan(raw: string) {
+    const parsed = parseScan(raw);
+    const item = lookupByBarcode(parsed.lookupKey) || lookupByBarcode(parsed.barcode);
+    const v = item
+      ? variantMap.get(item.variant_id) ?? toVS(item)
+      : variants.find((x) => x.barcode === parsed.lookupKey || x.barcode === parsed.barcode);
+    if (!v) {
+      beepError();
+      flash(false, `Unknown barcode: ${parsed.barcode}`);
+      setPendingUnknown(parsed.barcode);
+      return;
+    }
+    const qty = parsed.isWeightEmbedded && parsed.weight ? parsed.weight : 1;
+    bump(v, qty, parsed.isWeightEmbedded);
+  }
+
+  async function linkAndAdd(v: VariantSearchItem) {
+    if (!pendingUnknown) return;
+    const res = await linkBarcode(v.variant_id, v.product_id, pendingUnknown);
+    if (res?.error) return toast(res.error, "error");
+    toast(`Barcode linked to ${v.product_name}`);
+    void ensureCatalog({ force: true });
+    setPendingUnknown(null);
+    bump(v, 1, false);
+  }
+
+  useHardwareScanner((code) => handleScan(code));
 
   function loadPO(id: string) {
     setPoId(id);
@@ -129,10 +205,39 @@ export function ReceiveClient({
       <div className="grid gap-4 lg:grid-cols-[1fr_300px]">
         <div className="space-y-4">
           <Card className="p-4">
-            <p className="mb-3 flex items-center gap-2 text-sm font-medium text-text-secondary">
-              <ClipboardList className="h-4 w-4" /> Add items
-            </p>
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <p className="flex items-center gap-2 text-sm font-medium text-text-secondary">
+                <ClipboardList className="h-4 w-4" /> Add items
+              </p>
+              <Button type="button" variant="secondary" size="sm" onClick={() => setCameraOpen(true)}>
+                <Camera className="h-4 w-4" /> Scan
+              </Button>
+            </div>
             <VariantSearch items={variants} onPick={(v) => addLine(v)} exclude={chosen} autoFocus />
+
+            {lastScan && (
+              <div className={cn(
+                "mt-3 flex items-center gap-2 rounded-xl border px-3 py-2 text-sm animate-fade-in",
+                lastScan.ok ? "border-green-icon/30 bg-green-tile text-green-text" : "border-coral-icon/30 bg-coral-tile text-coral-text",
+              )}>
+                {lastScan.ok ? <CheckCircle2 className="h-4 w-4 shrink-0" /> : <AlertTriangle className="h-4 w-4 shrink-0" />}
+                <span className="truncate">{lastScan.text}</span>
+                <ScanLine className="ml-auto h-4 w-4 opacity-60" />
+              </div>
+            )}
+
+            {pendingUnknown && (
+              <div className="mt-3 rounded-xl border border-amber-icon/40 bg-amber-tile p-3">
+                <div className="mb-2 flex items-center gap-2 text-sm font-medium text-amber-text">
+                  <Link2 className="h-4 w-4" /> Link barcode <span className="font-mono">{pendingUnknown}</span>
+                  <button onClick={() => setPendingUnknown(null)} className="ml-auto rounded p-1 hover:bg-amber-icon/10"><X className="h-4 w-4" /></button>
+                </div>
+                <p className="mb-2 text-xs text-amber-text/80">
+                  Pick the product this barcode belongs to — it’ll be saved and added to the receipt.
+                </p>
+                <VariantSearch items={variants} onPick={(v) => linkAndAdd(v)} placeholder="Search product to link…" />
+              </div>
+            )}
 
             {lines.length === 0 ? (
               <div className="mt-4"><EmptyState icon={PackageCheck} title="No lines yet" description="Scan a barcode or search above to add items to this receipt." /></div>
@@ -209,6 +314,14 @@ export function ReceiveClient({
           </Card>
         </div>
       </div>
+
+      <CameraScanner
+        open={cameraOpen}
+        onClose={() => setCameraOpen(false)}
+        onResult={(code) => handleScan(code)}
+        continuous
+        title="Scan items to receive"
+      />
 
       {/* sticky totals bar */}
       <div className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-surface/95 backdrop-blur lg:left-[var(--sidebar-w,16rem)]">

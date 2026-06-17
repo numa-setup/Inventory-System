@@ -12,6 +12,37 @@ async function requireManager() {
   return user;
 }
 
+/**
+ * Link a scanned-but-unknown barcode to an existing variant (used by the
+ * receiving scan flow when a delivered item has no barcode on file yet).
+ */
+export async function linkBarcode(variantId: string, productId: string, barcode: string) {
+  if (!(await requireManager())) return { error: "Not authorized." };
+  const code = barcode.trim();
+  if (!code) return { error: "Empty barcode." };
+  const db = createAdminClient();
+  const { data: existing } = await db
+    .from("product_barcodes")
+    .select("variant_id")
+    .eq("barcode", code)
+    .maybeSingle();
+  if (existing) {
+    return existing.variant_id === variantId
+      ? { ok: true }
+      : { error: "That barcode is already linked to another item." };
+  }
+  const { error } = await db.from("product_barcodes").insert({
+    product_id: productId,
+    variant_id: variantId,
+    barcode: code,
+    type: /^\d{13}$/.test(code) ? "EAN" : "INTERNAL",
+    is_primary: false,
+  });
+  if (error) return { error: error.message };
+  revalidatePath("/products");
+  return { ok: true };
+}
+
 export interface SupplierInput {
   name: string;
   contact_person?: string | null;
