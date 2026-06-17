@@ -19,6 +19,10 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
   const range = resolveRange(one(sp.preset) || "this_year", one(sp.from), one(sp.to));
   const supabase = await createClient();
 
+  // Opportunistically free stock from abandoned orders so the board is accurate
+  // even between the scheduled (pg_cron) runs.
+  await supabase.rpc("release_expired_reservations");
+
   const { data: orders } = await supabase
     .from("orders")
     .select("id, order_no, customer_name, customer_phone, address, status, payment_type, subtotal, delivery_fee, total, created_at")
