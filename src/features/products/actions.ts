@@ -354,43 +354,80 @@ export async function assignInternalBarcode(variantId: string, productId: string
   return { ok: true, barcode, existed: false };
 }
 
+// ---- Product image gallery -----------------------------------------------
+// store_listings.images[] is the gallery; products.image_url mirrors the first
+// (cover) image so cards / catalog_index / POS use it without joining listings.
 const IMAGE_BUCKET = "product-images";
 
-/** Upload a product photo to storage and set it as the product's image. */
-export async function uploadProductImage(productId: string, formData: FormData) {
-  if (!(await requireManager())) return { error: "Not authorized." };
-  const file = formData.get("file");
-  if (!(file instanceof File) || file.size === 0) return { error: "No image selected." };
-  if (file.size > 5_242_880) return { error: "Image must be under 5 MB." };
-  if (!file.type.startsWith("image/")) return { error: "Please choose an image file." };
-
-  const db = createAdminClient();
+async function uploadOne(db: ReturnType<typeof createAdminClient>, productId: string, file: File): Promise<string | null> {
+  if (!(file instanceof File) || file.size === 0 || file.size > 5_242_880 || !file.type.startsWith("image/")) return null;
   const ext = (file.name.split(".").pop() || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "");
-  const path = `${productId}/${Date.now()}.${ext}`;
-  const { error: upErr } = await db.storage.from(IMAGE_BUCKET).upload(path, file, {
-    upsert: true,
-    contentType: file.type,
-    cacheControl: "31536000",
-  });
-  if (upErr) return { error: upErr.message };
-
-  const { data: pub } = db.storage.from(IMAGE_BUCKET).getPublicUrl(path);
-  const url = pub.publicUrl;
-  const { error } = await db.from("products").update({ image_url: url }).eq("id", productId);
-  if (error) return { error: error.message };
-
-  revalidatePath("/products");
-  return { ok: true as const, url };
+  const path = `${productId}/${Date.now()}-${Math.random().toString(36).slice(2, 7)}.${ext}`;
+  const { error } = await db.storage.from(IMAGE_BUCKET).upload(path, file, { upsert: true, contentType: file.type, cacheControl: "31536000" });
+  if (error) return null;
+  return db.storage.from(IMAGE_BUCKET).getPublicUrl(path).data.publicUrl;
 }
 
-/** Remove the product's photo (falls back to the placeholder). */
-export async function removeProductImage(productId: string) {
+async function currentImages(db: ReturnType<typeof createAdminClient>, productId: string): Promise<string[]> {
+  const { data } = await db.from("store_listings").select("images").eq("product_id", productId).maybeSingle();
+  const imgs = ((data?.images as string[]) ?? []).filter(Boolean);
+  if (imgs.length) return imgs;
+  // migrate a legacy single image_url into the gallery view
+  const { data: p } = await db.from("products").select("image_url").eq("id", productId).maybeSingle();
+  return p?.image_url ? [p.image_url as string] : [];
+}
+
+async function syncGallery(db: ReturnType<typeof createAdminClient>, productId: string, images: string[]) {
+  await db.from("store_listings").upsert({ product_id: productId, images }, { onConflict: "product_id" });
+  await db.from("products").update({ image_url: images[0] ?? null }).eq("id", productId);
+}
+
+/** Current gallery images for a product (cover first). */
+export async function getProductImages(productId: string): Promise<string[]> {
+  if (!(await requireManager())) return [];
+  return currentImages(createAdminClient(), productId);
+}
+
+/** Upload one or more photos; appends to the gallery and keeps the cover synced. */
+export async function uploadProductImages(productId: string, formData: FormData) {
+  if (!(await requireManager())) return { error: "Not authorized." };
+  const files = formData.getAll("files").filter((f): f is File => f instanceof File && f.size > 0);
+  if (!files.length) return { error: "No images selected." };
+  if (files.some((f) => f.size > 5_242_880)) return { error: "Each image must be under 5 MB." };
+
+  const db = createAdminClient();
+  const urls: string[] = [];
+  for (const f of files.slice(0, 8)) { const u = await uploadOne(db, productId, f); if (u) urls.push(u); }
+  if (!urls.length) return { error: "Upload failed — please try again." };
+
+  const images = [...(await currentImages(db, productId)), ...urls];
+  await syncGallery(db, productId, images);
+  revalidatePath("/products");
+  return { ok: true as const, images };
+}
+
+/** Remove a photo from the gallery (and storage). */
+export async function removeProductImageUrl(productId: string, url: string) {
   if (!(await requireManager())) return { error: "Not authorized." };
   const db = createAdminClient();
-  const { error } = await db.from("products").update({ image_url: null }).eq("id", productId);
-  if (error) return { error: error.message };
+  const images = (await currentImages(db, productId)).filter((u) => u !== url);
+  await syncGallery(db, productId, images);
+  const path = url.split(`/${IMAGE_BUCKET}/`)[1];
+  if (path) await db.storage.from(IMAGE_BUCKET).remove([path]);
   revalidatePath("/products");
-  return { ok: true as const };
+  return { ok: true as const, images };
+}
+
+/** Make a photo the cover (move to front of the gallery). */
+export async function setPrimaryProductImage(productId: string, url: string) {
+  if (!(await requireManager())) return { error: "Not authorized." };
+  const db = createAdminClient();
+  const cur = await currentImages(db, productId);
+  if (!cur.includes(url)) return { error: "Image not found." };
+  const images = [url, ...cur.filter((u) => u !== url)];
+  await syncGallery(db, productId, images);
+  revalidatePath("/products");
+  return { ok: true as const, images };
 }
 
 /** Bulk set the sale price on every variant of a product. */

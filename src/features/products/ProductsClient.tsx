@@ -22,7 +22,7 @@ import { createProduct, updateVariant, bulkSetPrice, searchProducts, type Produc
 import { PRODUCTS_PAGE_SIZE, type ProductRow, type VariantRow, type ProductsPage } from "@/lib/products-query";
 import { LabelDialog, type LabelTarget } from "./LabelDialog";
 import { ImportDrawer } from "./ImportDrawer";
-import { ImageUpload } from "./ImageUpload";
+import { ImageGallery } from "./ImageGallery";
 
 export type { ProductRow, VariantRow };
 
@@ -321,7 +321,7 @@ function ProductGroup({
       {isOpen && (
         <div className="bg-surface-2/50 px-4 pb-4 pt-1">
           <div className="pt-3">
-            <ImageUpload productId={p.id} current={p.image_url} onChanged={onImageChanged} />
+            <ImageGallery productId={p.id} onChanged={onImageChanged} />
           </div>
           {/* bulk price */}
           <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2">

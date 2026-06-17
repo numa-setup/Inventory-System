@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { getProductBySlug, getProductVariants, getRelated } from "@/lib/storefront";
-import { ProductMedia } from "@/components/store/ProductMedia";
+import { ProductGallery } from "@/components/store/ProductGallery";
 import { ProductCard } from "@/components/store/ProductCard";
 import { AddToBag } from "@/components/store/AddToBag";
 
@@ -46,16 +46,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
 
       <div className="grid grid-cols-1 gap-10 lg:grid-cols-2 lg:gap-16">
         {/* media */}
-        <div className="space-y-3">
-          <div className="relative aspect-[4/5] overflow-hidden bg-store-sand">
-            <ProductMedia src={gallery[0] ?? null} title={product.title} seed={product.slug} />
-          </div>
-          {gallery[1] && (
-            <div className="relative aspect-[4/5] overflow-hidden bg-store-sand">
-              <ProductMedia src={gallery[1]} title={product.title} seed={product.slug + "b"} />
-            </div>
-          )}
-        </div>
+        <ProductGallery images={gallery} title={product.title} slug={product.slug} />
 
         {/* info (sticky) */}
         <div className="lg:py-4">
