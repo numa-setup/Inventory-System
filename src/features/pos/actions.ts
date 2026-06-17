@@ -90,8 +90,18 @@ export async function checkoutSale(input: {
 
   const variantIds = input.lines.map((l) => l.variant_id);
   const { data: avail } = await db
-    .from("variant_availability").select("variant_id, avg_cost").in("variant_id", variantIds);
+    .from("variant_availability").select("variant_id, avg_cost, available").in("variant_id", variantIds);
   const costMap = new Map((avail ?? []).map((a) => [a.variant_id, Number(a.avg_cost)]));
+  const availMap = new Map((avail ?? []).map((a) => [a.variant_id, Number(a.available)]));
+
+  // Pre-check stock so we never create an orphan sale; the DB trigger is the
+  // authoritative backstop for races (it blocks any physical location < 0).
+  for (const l of input.lines) {
+    const have = availMap.get(l.variant_id) ?? 0;
+    if (l.qty > have) {
+      return { error: `Not enough stock — need ${l.qty}, only ${have} available.` };
+    }
+  }
 
   let subtotal = 0, lineDiscTotal = 0, cogsTotal = 0;
   const items = input.lines.map((l) => {
@@ -149,7 +159,12 @@ export async function checkoutSale(input: {
     idempotency_key: `${input.idempotency_key}-${i}`, created_by: user.id,
   }));
   const { error: mErr } = await db.from("stock_moves").insert(moves);
-  if (mErr) return { error: mErr.message };
+  if (mErr) {
+    // The stock guard (or any move failure) rejected the sale — undo the header
+    // so no orphan sale/items/payments remain (sale_items & payments cascade).
+    await db.from("sales").delete().eq("id", saleId);
+    return { error: mErr.message.includes("Insufficient stock") ? "Not enough stock to complete this sale." : mErr.message };
+  }
 
   await db.from("payments").insert(
     input.payments

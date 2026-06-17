@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import {
   Search, ShoppingCart, Plus, Minus, Trash2, X, Banknote,
   Loader2, Package, ScanLine, Camera, CheckCircle2, AlertTriangle, Tag, RotateCcw,
-  Keyboard, Pause, Clock, Play,
+  Keyboard, Pause, Clock, Play, WifiOff, RefreshCw,
 } from "lucide-react";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
@@ -23,6 +23,7 @@ import { PaymentSheet } from "./PaymentSheet";
 import { Receipt } from "./Receipt";
 import { ReturnsSheet } from "./ReturnsSheet";
 import { checkoutSale, type PaymentInput } from "./actions";
+import { enqueueSale, getQueue, removeFromQueue, queueCount, type QueuedSalePayload } from "@/lib/pos-queue";
 import { printReceipt, type ReceiptData } from "@/lib/receipt";
 
 export interface StoreSettings {
@@ -128,6 +129,9 @@ export function PosClient({
   const [held, setHeld] = useState<HeldSale[]>([]);
   const [heldOpen, setHeldOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [online, setOnline] = useState(true);
+  const [queued, setQueued] = useState(0);
+  const flushing = useRef(false);
   const idemKey = useRef("");
   const [cameraOpen, setCameraOpen] = useState(false);
   const [lastScan, setLastScan] = useState<{ ok: boolean; text: string } | null>(null);
@@ -269,40 +273,91 @@ export function PosClient({
 
   async function checkout(payments: PaymentInput[], change: number) {
     if (!lines.length) return;
-    setProcessing(true);
     const cartLines = lines; // snapshot for the receipt before we clear
-    const res = await checkoutSale({
+    const cust = customers.find((c) => c.id === customerId) ?? null;
+    const payload: QueuedSalePayload = {
       lines: cartLines.map((l) => ({
         variant_id: l.p.variant_id, product_id: l.p.product_id, qty: l.qty, unit_price: l.p.price,
         discount: Math.min(lineDisc.get(l.p.variant_id) || 0, l.p.price * l.qty),
       })),
       customer_id: customerId || null, payments, discount: Number(discount) || 0,
-      idempotency_key: idemKey.current,
-    });
-    setProcessing(false);
-    if ("error" in res) return toast(res.error, "error");
-
-    const cust = customers.find((c) => c.id === customerId) ?? null;
-    const receipt: ReceiptData = {
+    };
+    const makeReceipt = (receiptNo: string, sub: number, dis: number, tx: number, tot: number): ReceiptData => ({
       store: {
         name: store.name, address: store.address, phone: store.phone, logo_url: store.logo_url,
         header: store.receipt_header, footer: store.receipt_footer, ntn: store.ntn,
       },
-      receipt_no: res.receipt_no,
+      receipt_no: receiptNo,
       date: new Date().toLocaleString("en-PK", { dateStyle: "medium", timeStyle: "short" }),
       cashier: cashierName,
       customer: cust?.name ?? null,
       items: cartLines.map((l) => ({ name: l.p.name, label: l.p.label || undefined, qty: l.qty, unit_price: l.p.price, line_total: round2(l.p.price * l.qty) })),
-      subtotal: res.subtotal, discount: res.discount, tax: res.tax, tax_percent: store.tax_percent, total: res.total,
+      subtotal: sub, discount: dis, tax: tx, tax_percent: store.tax_percent, total: tot,
       payments, change,
-    };
+    });
+
+    setProcessing(true);
+    try {
+      if (typeof navigator !== "undefined" && !navigator.onLine) throw new Error("offline");
+      const res = await checkoutSale({ ...payload, idempotency_key: idemKey.current });
+      setProcessing(false);
+      if ("error" in res) return toast(res.error, "error"); // real rejection — keep the cart
+      finishSale(makeReceipt(res.receipt_no, res.subtotal, res.discount, res.tax, res.total));
+      void ensureCatalog({ force: true });
+      router.refresh();
+    } catch {
+      // network unreachable — queue locally and print a provisional receipt
+      await enqueueSale({ idempotency_key: idemKey.current, ts: Date.now(), payload });
+      setProcessing(false);
+      finishSale(makeReceipt(`OFFLINE-${idemKey.current.slice(0, 8)}`, subtotal, disc, tax, total));
+      void refreshQueue();
+      toast("Offline — sale queued, will sync on reconnect", "error");
+    }
+  }
+
+  function finishSale(receipt: ReceiptData) {
     setReceiptData(receipt);
-    setLastReceipt(receipt); // kept for F6 (print last receipt) after this closes
+    setLastReceipt(receipt); // kept for F6 after the modal closes
     setPaymentOpen(false);
     setCart(new Map()); setLineDisc(new Map()); setDiscount("");
-    void ensureCatalog({ force: true }); // reconcile stock after the deduction
-    router.refresh();
   }
+
+  async function refreshQueue() { setQueued(await queueCount()); }
+
+  async function flushQueue() {
+    if (flushing.current) return;
+    if (typeof navigator !== "undefined" && !navigator.onLine) return;
+    flushing.current = true;
+    try {
+      for (const s of await getQueue()) {
+        try {
+          const res = await checkoutSale({ ...s.payload, idempotency_key: s.idempotency_key });
+          await removeFromQueue(s.idempotency_key);
+          if ("error" in res) toast(`A queued sale couldn't sync: ${res.error}`, "error");
+        } catch {
+          break; // still offline — leave the rest queued
+        }
+      }
+    } finally {
+      flushing.current = false;
+      await refreshQueue();
+      void ensureCatalog({ force: true });
+      router.refresh();
+    }
+  }
+
+  // Track connectivity and flush the queue on reconnect / load.
+  useEffect(() => {
+    setOnline(navigator.onLine);
+    void refreshQueue();
+    void flushQueue();
+    const goOnline = () => { setOnline(true); void flushQueue(); };
+    const goOffline = () => setOnline(false);
+    window.addEventListener("online", goOnline);
+    window.addEventListener("offline", goOffline);
+    return () => { window.removeEventListener("online", goOnline); window.removeEventListener("offline", goOffline); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function finishReceipt() {
     setReceiptData(null);
@@ -428,6 +483,23 @@ export function PosClient({
             <Keyboard className="h-5 w-5" />
           </button>
         </div>
+
+        {/* offline / sync status */}
+        {(!online || queued > 0) && (
+          <div className="mb-3 flex items-center gap-2 rounded-xl border border-amber-icon/30 bg-amber-tile px-3 py-2 text-sm text-amber-text">
+            <WifiOff className="h-4 w-4 shrink-0" />
+            <span className="flex-1">
+              {online
+                ? `${queued} sale${queued !== 1 ? "s" : ""} waiting to sync`
+                : `Offline — sales are queued${queued > 0 ? ` (${queued})` : ""} and will sync on reconnect`}
+            </span>
+            {online && queued > 0 && (
+              <button onClick={() => flushQueue()} className="flex items-center gap-1 font-medium underline">
+                <RefreshCw className="h-3.5 w-3.5" /> Sync now
+              </button>
+            )}
+          </div>
+        )}
 
         {/* per-scan confirmation / warning */}
         {lastScan && (
