@@ -29,7 +29,7 @@ export interface SettingsData {
   address: string; phone: string; ntn: string; receipt_header: string; receipt_footer: string; logo_url: string;
   low_stock_default: number; barcode_format: string; default_unit: string;
   rounding: string; receipt_template: string; allow_discounts: boolean;
-  courier: Record<string, string>; resend_key: string; whatsapp_key: string; notif_prefs: Record<string, unknown>;
+  courier: Record<string, string>; resend_key: string; whatsapp_key: string; from_email: string; notif_prefs: Record<string, unknown>;
 }
 export interface UserRow { id: string; full_name: string; role: string; active: boolean; email: string }
 
@@ -291,24 +291,52 @@ function IntegrationsSection({ data, isOwner }: { data: SettingsData; isOwner: b
   const { saving, run } = useSaver();
   const [f, setF] = useState({
     postex: data.courier.postex ?? "", leopards: data.courier.leopards ?? "", trax: data.courier.trax ?? "",
-    resend: data.resend_key, whatsapp: data.whatsapp_key,
+    resend: data.resend_key, whatsapp: data.whatsapp_key, from_email: data.from_email,
+    stripe_secret: data.courier.stripe_secret ?? "",
+    jazzcash_merchant: data.courier.jazzcash_merchant ?? "", jazzcash_password: data.courier.jazzcash_password ?? "",
+    easypaisa_store: data.courier.easypaisa_store ?? "", easypaisa_key: data.courier.easypaisa_key ?? "",
     notify_low_stock: Boolean((data.notif_prefs.low_stock as boolean) ?? true),
     notify_new_order: Boolean((data.notif_prefs.new_order as boolean) ?? true),
   });
+  const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement>) => setF((s) => ({ ...s, [k]: e.target.value }));
+  const gatewayLive = Boolean(f.stripe_secret || (f.jazzcash_merchant && f.jazzcash_password) || (f.easypaisa_store && f.easypaisa_key));
   return (
     <Card>
       <CardHeader><CardTitle className="flex items-center gap-2"><Plug className="h-4 w-4" /> Integrations</CardTitle></CardHeader>
       <CardBody>
-        <form onSubmit={(e) => { e.preventDefault(); run(() => updateIntegrations({ courier: { postex: f.postex, leopards: f.leopards, trax: f.trax }, resend_key: f.resend, whatsapp_key: f.whatsapp, notif_prefs: { low_stock: f.notify_low_stock, new_order: f.notify_new_order } })); }} className="space-y-4">
-          <p className="text-xs font-medium text-text-secondary">Courier API keys</p>
+        <form onSubmit={(e) => { e.preventDefault(); run(() => updateIntegrations({
+          courier: { postex: f.postex, leopards: f.leopards, trax: f.trax },
+          resend_key: f.resend, whatsapp_key: f.whatsapp, from_email: f.from_email,
+          payment: { stripe_secret: f.stripe_secret, jazzcash_merchant: f.jazzcash_merchant, jazzcash_password: f.jazzcash_password, easypaisa_store: f.easypaisa_store, easypaisa_key: f.easypaisa_key },
+          notif_prefs: { low_stock: f.notify_low_stock, new_order: f.notify_new_order },
+        })); }} className="space-y-4">
+          <p className="text-xs font-medium text-text-secondary">Notifications</p>
           <div className="grid gap-3 sm:grid-cols-3">
-            <div><Label>PostEx</Label><Input value={f.postex} disabled={!isOwner} onChange={(e) => setF((s) => ({ ...s, postex: e.target.value }))} /></div>
-            <div><Label>Leopards</Label><Input value={f.leopards} disabled={!isOwner} onChange={(e) => setF((s) => ({ ...s, leopards: e.target.value }))} /></div>
-            <div><Label>Trax</Label><Input value={f.trax} disabled={!isOwner} onChange={(e) => setF((s) => ({ ...s, trax: e.target.value }))} /></div>
+            <div><Label>Resend (email) key</Label><Input value={f.resend} disabled={!isOwner} onChange={set("resend")} placeholder="re_..." /></div>
+            <div><Label>Sender email</Label><Input value={f.from_email} disabled={!isOwner} onChange={set("from_email")} placeholder="orders@yourstore.pk" /></div>
+            <div><Label>WhatsApp key</Label><Input value={f.whatsapp} disabled={!isOwner} onChange={set("whatsapp")} /></div>
           </div>
+
+          <div className="flex items-center gap-2 border-t border-border pt-3">
+            <p className="text-xs font-medium text-text-secondary">Online payments</p>
+            <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${gatewayLive ? "bg-green-tile text-green-text" : "bg-amber-tile text-amber-text"}`}>
+              {gatewayLive ? "Live" : "Sandbox"}
+            </span>
+          </div>
+          <p className="text-[11px] text-text-tertiary">Add a provider’s keys to take real online payments. Leave blank to keep the storefront in sandbox (no real charge).</p>
           <div className="grid gap-3 sm:grid-cols-2">
-            <div><Label>Resend (email) key</Label><Input value={f.resend} disabled={!isOwner} onChange={(e) => setF((s) => ({ ...s, resend: e.target.value }))} /></div>
-            <div><Label>WhatsApp key</Label><Input value={f.whatsapp} disabled={!isOwner} onChange={(e) => setF((s) => ({ ...s, whatsapp: e.target.value }))} /></div>
+            <div className="sm:col-span-2"><Label>Stripe secret key</Label><Input value={f.stripe_secret} disabled={!isOwner} onChange={set("stripe_secret")} placeholder="sk_live_..." /></div>
+            <div><Label>JazzCash merchant ID</Label><Input value={f.jazzcash_merchant} disabled={!isOwner} onChange={set("jazzcash_merchant")} /></div>
+            <div><Label>JazzCash password</Label><Input value={f.jazzcash_password} disabled={!isOwner} onChange={set("jazzcash_password")} /></div>
+            <div><Label>Easypaisa store ID</Label><Input value={f.easypaisa_store} disabled={!isOwner} onChange={set("easypaisa_store")} /></div>
+            <div><Label>Easypaisa key</Label><Input value={f.easypaisa_key} disabled={!isOwner} onChange={set("easypaisa_key")} /></div>
+          </div>
+
+          <p className="border-t border-border pt-3 text-xs font-medium text-text-secondary">Courier API keys</p>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div><Label>PostEx</Label><Input value={f.postex} disabled={!isOwner} onChange={set("postex")} /></div>
+            <div><Label>Leopards</Label><Input value={f.leopards} disabled={!isOwner} onChange={set("leopards")} /></div>
+            <div><Label>Trax</Label><Input value={f.trax} disabled={!isOwner} onChange={set("trax")} /></div>
           </div>
           <p className="text-xs font-medium text-text-secondary">Notify admins when</p>
           <div className="space-y-2">

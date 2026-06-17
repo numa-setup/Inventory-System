@@ -50,6 +50,7 @@ export default async function SettingsPage() {
     receipt_template: String(sales.receipt_template ?? "standard"),
     allow_discounts: Boolean(sales.allow_discounts ?? true),
     courier, resend_key: courier.resend ?? "", whatsapp_key: courier.whatsapp ?? "",
+    from_email: String(info.from_email ?? ""),
     notif_prefs: notif,
   };
 

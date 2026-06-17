@@ -70,12 +70,23 @@ export async function updateSalesSettings(input: {
 /* ---------------- Integrations ---------------- */
 export async function updateIntegrations(input: {
   courier: Record<string, string>;
-  resend_key?: string; whatsapp_key?: string;
+  resend_key?: string; whatsapp_key?: string; from_email?: string;
+  payment?: { stripe_secret?: string; jazzcash_merchant?: string; jazzcash_password?: string; easypaisa_store?: string; easypaisa_key?: string };
   notif_prefs: Record<string, unknown>;
 }) {
   if (!(await requireOwner())) return { error: "Only the owner can change settings." };
   const db = createAdminClient();
-  await mergeJson(db, "courier_keys", { ...input.courier, resend: input.resend_key ?? "", whatsapp: input.whatsapp_key ?? "" });
+  await mergeJson(db, "courier_keys", {
+    ...input.courier,
+    resend: input.resend_key ?? "",
+    whatsapp: input.whatsapp_key ?? "",
+    stripe_secret: input.payment?.stripe_secret ?? "",
+    jazzcash_merchant: input.payment?.jazzcash_merchant ?? "",
+    jazzcash_password: input.payment?.jazzcash_password ?? "",
+    easypaisa_store: input.payment?.easypaisa_store ?? "",
+    easypaisa_key: input.payment?.easypaisa_key ?? "",
+  });
+  if (input.from_email !== undefined) await mergeJson(db, "store_info", { from_email: input.from_email });
   await mergeJson(db, "notif_prefs", input.notif_prefs);
   revalidatePath("/settings");
   return { ok: true };
