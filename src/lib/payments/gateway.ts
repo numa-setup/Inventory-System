@@ -1,4 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin";
+import type { JazzCashConfig } from "./jazzcash";
 
 // Online payment gateway abstraction. The storefront runs in "sandbox" mode
 // until real provider credentials are added in Settings → Integrations, at which
@@ -15,14 +16,23 @@ export async function getGatewayConfig(): Promise<GatewayConfig> {
   const db = createAdminClient();
   const { data } = await db.from("settings").select("courier_keys").eq("id", 1).maybeSingle();
   const k = (data?.courier_keys ?? {}) as Record<string, string | undefined>;
-  if (k.stripe_secret) return { mode: "live", provider: "stripe" };
-  if (k.jazzcash_merchant && k.jazzcash_password) return { mode: "live", provider: "jazzcash" };
-  if (k.easypaisa_store && k.easypaisa_key) return { mode: "live", provider: "easypaisa" };
+  // JazzCash is the wired live provider (hosted checkout). It needs all three.
+  if (k.jazzcash_merchant && k.jazzcash_password && k.jazzcash_salt) return { mode: "live", provider: "jazzcash" };
+  // Stripe / Easypaisa keys can be stored but stay sandbox until their checkout
+  // + webhook are implemented.
   return { mode: "sandbox" };
 }
 
-// When a provider is wired, implement these:
-//   createPaymentIntent(order)  -> redirect URL to the hosted checkout
-//   verifyWebhook(payload, sig) -> confirmed payment to credit the order
-// In live mode the order is credited by the verified webhook, never by the
-// client, so confirmOnlinePayment is gated to sandbox.
+export async function getJazzCashConfig(): Promise<JazzCashConfig> {
+  const db = createAdminClient();
+  const { data } = await db.from("settings").select("courier_keys").eq("id", 1).maybeSingle();
+  const k = (data?.courier_keys ?? {}) as Record<string, string | undefined>;
+  const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? "").replace(/\/$/, "");
+  return {
+    merchant: k.jazzcash_merchant ?? "",
+    password: k.jazzcash_password ?? "",
+    salt: k.jazzcash_salt ?? "",
+    returnUrl: `${appUrl}/api/payments/jazzcash/return`,
+    sandbox: k.jazzcash_sandbox === "true",
+  };
+}

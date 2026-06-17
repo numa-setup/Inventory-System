@@ -71,7 +71,7 @@ export async function updateSalesSettings(input: {
 export async function updateIntegrations(input: {
   courier: Record<string, string>;
   resend_key?: string; whatsapp_key?: string; from_email?: string;
-  payment?: { stripe_secret?: string; jazzcash_merchant?: string; jazzcash_password?: string; easypaisa_store?: string; easypaisa_key?: string };
+  payment?: { stripe_secret?: string; jazzcash_merchant?: string; jazzcash_password?: string; jazzcash_salt?: string; jazzcash_sandbox?: boolean; easypaisa_store?: string; easypaisa_key?: string };
   notif_prefs: Record<string, unknown>;
 }) {
   if (!(await requireOwner())) return { error: "Only the owner can change settings." };
@@ -83,6 +83,8 @@ export async function updateIntegrations(input: {
     stripe_secret: input.payment?.stripe_secret ?? "",
     jazzcash_merchant: input.payment?.jazzcash_merchant ?? "",
     jazzcash_password: input.payment?.jazzcash_password ?? "",
+    jazzcash_salt: input.payment?.jazzcash_salt ?? "",
+    jazzcash_sandbox: input.payment?.jazzcash_sandbox ? "true" : "",
     easypaisa_store: input.payment?.easypaisa_store ?? "",
     easypaisa_key: input.payment?.easypaisa_key ?? "",
   });

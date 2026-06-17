@@ -4,9 +4,10 @@ import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { placeOrderSchema, firstIssue } from "@/lib/validation";
 import { round2 } from "@/lib/pricing";
-import { getDeliveryConfig, getOrderByNo } from "@/lib/storefront";
+import { getDeliveryConfig } from "@/lib/storefront";
 import { notifyOrderPlaced } from "@/lib/notifications/dispatch";
 import { getGatewayConfig } from "@/lib/payments/gateway";
+import { creditOrder } from "@/lib/payments/credit";
 
 export type OnlineMethod = "CARD" | "JAZZCASH" | "EASYPAISA" | "WALLET";
 export interface PlaceOrderInput {
@@ -118,32 +119,9 @@ export async function confirmOnlinePayment(orderNo: string, method: OnlineMethod
   const cfg = await getGatewayConfig();
   if (cfg.mode === "live") return { error: "Live payments are confirmed by the gateway." };
 
-  const db = createAdminClient();
-  const { data: order } = await db
-    .from("orders").select("id, order_no, status, total, customer_name, customer_phone, address")
-    .eq("order_no", orderNo).maybeSingle();
-  if (!order) return { error: "Order not found." };
-  if (order.status === "CANCELLED") return { error: "This order was cancelled." };
-
-  const { data: existing } = await db.from("payments").select("id").eq("order_id", order.id).limit(1).maybeSingle();
-  if (!existing) {
-    await db.from("payments").insert({ order_id: order.id, method, amount: Number(order.total) });
-    await db.from("orders").update({ payment_type: method, status: order.status === "PLACED" ? "CONFIRMED" : order.status }).eq("id", order.id);
-
-    const full = await getOrderByNo(orderNo);
-    if (full) {
-      await notifyOrderPlaced({
-        order_no: full.order_no,
-        customer_name: full.customer_name,
-        customer_phone: full.customer_phone,
-        address: full.address,
-        total: full.total,
-        items: full.items.map((i) => ({ title: i.title, qty: i.qty, line_total: i.line_total })),
-      });
-    }
-  }
-
+  const res = await creditOrder(orderNo, method);
+  if ("error" in res) return res;
   revalidatePath("/orders");
   revalidatePath("/dashboard");
-  return { ok: true as const, order_no: order.order_no };
+  return { ok: true as const, order_no: orderNo };
 }
