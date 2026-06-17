@@ -81,19 +81,48 @@ async function fetchSales(supabase: Supabase, range: DateRange) {
   return { sales: sales ?? [], items: (items ?? []) as Record<string, unknown>[] };
 }
 
+/**
+ * Fulfilled web orders (shipped onward) as sale-like rows. Revenue = order total;
+ * COGS comes from the ledger moves posted when the order shipped, so profit lines
+ * up with the inventory cost. Recognised by order created_at (placement).
+ */
+interface WebTxn { id: string; total: number; profit: number; cogs: number; created_at: string }
+async function fetchWebOrders(supabase: Supabase, range: DateRange): Promise<WebTxn[]> {
+  const { data: orders } = await supabase
+    .from("orders")
+    .select("id, total, created_at")
+    .in("status", ["SHIPPED", "OUT_FOR_DELIVERY", "DELIVERED"])
+    .gte("created_at", iso(range.from)).lte("created_at", iso(range.to));
+  const ids = (orders ?? []).map((o) => o.id);
+  const { data: moves } = ids.length
+    ? await supabase.from("stock_moves").select("reference_id, qty, unit_cost").eq("reference_type", "SALE").in("reference_id", ids)
+    : { data: [] as { reference_id: string; qty: number; unit_cost: number | null }[] };
+  const cogs = new Map<string, number>();
+  for (const m of moves ?? []) cogs.set(m.reference_id, (cogs.get(m.reference_id) ?? 0) + Number(m.qty) * Number(m.unit_cost ?? 0));
+  return (orders ?? []).map((o) => {
+    const c = cogs.get(o.id) ?? 0;
+    return { id: o.id, total: Number(o.total), cogs: c, profit: Number(o.total) - c, created_at: o.created_at };
+  });
+}
+
 /* ---------------- 1. Sales ---------------- */
 async function salesReport(supabase: Supabase, range: DateRange, params: URLSearchParams): Promise<ReportData> {
   const groupBy = params.get("view") ?? "day";
   const { sales, items } = await fetchSales(supabase, range);
+  const web = await fetchWebOrders(supabase, range);
   const variants = await getVariantOptions(supabase);
   const vMap = new Map(variants.map((v) => [v.variant_id, v]));
   const catName = await categoryNames(supabase);
 
-  const totalSales = sales.reduce((s, x) => s + Number(x.total), 0);
-  const totalProfit = sales.reduce((s, x) => s + Number(x.profit), 0);
-  const count = sales.length;
+  // headline numbers span both channels (in-store POS + fulfilled web orders)
+  const totalSales = sales.reduce((s, x) => s + Number(x.total), 0) + web.reduce((s, x) => s + x.total, 0);
+  const totalProfit = sales.reduce((s, x) => s + Number(x.profit), 0) + web.reduce((s, x) => s + x.profit, 0);
+  const count = sales.length + web.length;
 
-  const chart = trend(range, sales.map((s) => ({ created_at: s.created_at, value: Number(s.total) })), "blue", "sales");
+  const chart = trend(range, [
+    ...sales.map((s) => ({ created_at: s.created_at, value: Number(s.total) })),
+    ...web.map((w) => ({ created_at: w.created_at, value: w.total })),
+  ], "blue", "sales");
 
   let columns: ReportColumn[]; let rows: Record<string, unknown>[];
   if (groupBy === "product" || groupBy === "category") {
@@ -136,6 +165,14 @@ async function salesReport(supabase: Supabase, range: DateRange, params: URLSear
     for (const p of pays ?? []) agg.set(p.method, (agg.get(p.method) ?? 0) + Number(p.amount));
     columns = [{ key: "name", header: "Payment type", kind: "text" }, { key: "amount", header: "Amount", align: "right", kind: "pkr" }];
     rows = [...agg.entries()].map(([name, amount]) => ({ name, amount })).sort((a, b) => b.amount - a.amount);
+  } else if (groupBy === "channel") {
+    const pos = { name: "In-store (POS)", orders: sales.length, sales: sales.reduce((s, x) => s + Number(x.total), 0), profit: sales.reduce((s, x) => s + Number(x.profit), 0) };
+    const online = { name: "Online (Web)", orders: web.length, sales: web.reduce((s, x) => s + x.total, 0), profit: web.reduce((s, x) => s + x.profit, 0) };
+    columns = [
+      { key: "name", header: "Channel", kind: "text" }, { key: "orders", header: "Orders", align: "right", kind: "num" },
+      { key: "sales", header: "Sales", align: "right", kind: "pkr" }, { key: "profit", header: "Profit", align: "right", kind: "pkr" },
+    ];
+    rows = [pos, online];
   } else {
     const b = bucketOf(range);
     const agg = new Map<string, { label: string; orders: number; sales: number; profit: number }>();
@@ -143,6 +180,12 @@ async function salesReport(supabase: Supabase, range: DateRange, params: URLSear
       const k = bucketKey(new Date(s.created_at), b);
       const cur = agg.get(k) ?? { label: k, orders: 0, sales: 0, profit: 0 };
       cur.orders += 1; cur.sales += Number(s.total); cur.profit += Number(s.profit);
+      agg.set(k, cur);
+    }
+    for (const w of web) {
+      const k = bucketKey(new Date(w.created_at), b);
+      const cur = agg.get(k) ?? { label: k, orders: 0, sales: 0, profit: 0 };
+      cur.orders += 1; cur.sales += w.total; cur.profit += w.profit;
       agg.set(k, cur);
     }
     columns = [
@@ -163,9 +206,9 @@ async function salesReport(supabase: Supabase, range: DateRange, params: URLSear
     charts: [{ ...chart, title: "Sales trend" }],
     columns, rows,
     dimensions: [{ key: "view", label: "Group by: Day", options: [
-      { value: "day", label: "By day" }, { value: "product", label: "By product" },
-      { value: "category", label: "By category" }, { value: "cashier", label: "By cashier" },
-      { value: "payment", label: "By payment type" },
+      { value: "day", label: "By day" }, { value: "channel", label: "By channel" },
+      { value: "product", label: "By product" }, { value: "category", label: "By category" },
+      { value: "cashier", label: "By cashier" }, { value: "payment", label: "By payment type" },
     ] }],
   };
 }
@@ -173,10 +216,11 @@ async function salesReport(supabase: Supabase, range: DateRange, params: URLSear
 /* ---------------- 2. Profit & margin ---------------- */
 async function profitReport(supabase: Supabase, range: DateRange): Promise<ReportData> {
   const { sales, items } = await fetchSales(supabase, range);
+  const web = await fetchWebOrders(supabase, range);
   const variants = await getVariantOptions(supabase);
   const vMap = new Map(variants.map((v) => [v.variant_id, v]));
-  const revenue = sales.reduce((s, x) => s + Number(x.total), 0);
-  const cogs = sales.reduce((s, x) => s + Number(x.cogs_total), 0);
+  const revenue = sales.reduce((s, x) => s + Number(x.total), 0) + web.reduce((s, x) => s + x.total, 0);
+  const cogs = sales.reduce((s, x) => s + Number(x.cogs_total), 0) + web.reduce((s, x) => s + x.cogs, 0);
   const profit = revenue - cogs;
   const margin = revenue ? (profit / revenue) * 100 : 0;
 
@@ -199,7 +243,10 @@ async function profitReport(supabase: Supabase, range: DateRange): Promise<Repor
       { label: "Gross Profit", value: formatPKR(profit, { compact: true }), accent: "green" },
       { label: "Margin", value: `${margin.toFixed(1)}%`, accent: "teal" },
     ],
-    charts: [{ ...trend(range, sales.map((s) => ({ created_at: s.created_at, value: Number(s.profit) })), "green", "profit"), title: "Profit trend" }],
+    charts: [{ ...trend(range, [
+      ...sales.map((s) => ({ created_at: s.created_at, value: Number(s.profit) })),
+      ...web.map((w) => ({ created_at: w.created_at, value: w.profit })),
+    ], "green", "profit"), title: "Profit trend" }],
     columns: [
       { key: "name", header: "Product", kind: "text" }, { key: "revenue", header: "Revenue", align: "right", kind: "pkr" },
       { key: "cogs", header: "COGS", align: "right", kind: "pkr" }, { key: "profit", header: "Profit", align: "right", kind: "pkr" },
@@ -456,8 +503,9 @@ async function systemReport(supabase: Supabase, range: DateRange): Promise<Repor
     supabase.from("orders").select("id", { count: "exact", head: true }).gte("created_at", iso(range.from)).lte("created_at", iso(range.to)),
   ]);
 
-  const revenue = sales.reduce((s, x) => s + Number(x.total), 0);
-  const profit = sales.reduce((s, x) => s + Number(x.profit), 0);
+  const web = await fetchWebOrders(supabase, range);
+  const revenue = sales.reduce((s, x) => s + Number(x.total), 0) + web.reduce((s, x) => s + x.total, 0);
+  const profit = sales.reduce((s, x) => s + Number(x.profit), 0) + web.reduce((s, x) => s + x.profit, 0);
   const stockValue = (avail ?? []).reduce((s, a) => { const v = vMap.get(a.variant_id); return s + Number(a.on_hand) * (v?.cost ?? 0); }, 0);
   const payables = (suppliers ?? []).reduce((s, x) => s + Math.max(Number(x.balance), 0), 0);
   const udhaar = (customers ?? []).reduce((s, x) => s + Math.max(Number(x.credit_balance), 0), 0);
@@ -477,6 +525,12 @@ async function systemReport(supabase: Supabase, range: DateRange): Promise<Repor
     cur.sales += Number(s.total); cur.profit += Number(s.profit);
     dayAgg.set(k, cur);
   }
+  for (const w of web) {
+    const k = bucketKey(new Date(w.created_at), b);
+    const cur = dayAgg.get(k) ?? { label: k, sales: 0, profit: 0 };
+    cur.sales += w.total; cur.profit += w.profit;
+    dayAgg.set(k, cur);
+  }
 
   return {
     key: "system", title: "Full System Report", subtitle: range.label,
@@ -489,7 +543,10 @@ async function systemReport(supabase: Supabase, range: DateRange): Promise<Repor
       { label: "Udhaar", value: formatPKR(udhaar, { compact: true }), accent: "amber" },
     ],
     charts: [
-      { ...trend(range, sales.map((s) => ({ created_at: s.created_at, value: Number(s.total) })), "blue", "sales"), title: "Sales trend" },
+      { ...trend(range, [
+        ...sales.map((s) => ({ created_at: s.created_at, value: Number(s.total) })),
+        ...web.map((w) => ({ created_at: w.created_at, value: w.total })),
+      ], "blue", "sales"), title: "Sales trend" },
       { type: "donut", title: "Sales by category", data: [...byCat.entries()].map(([name, value]) => ({ name, value: Math.round(value) })) },
     ],
     columns: [
