@@ -18,7 +18,7 @@ import { VariantSearch, type VariantSearchItem } from "@/components/ui/VariantSe
 import { CameraScanner } from "@/components/scan/CameraScannerLazy";
 import { useCatalog } from "@/lib/useCatalog";
 import { ensureCatalog, lookupByBarcode, type CatalogItem } from "@/lib/catalog-cache";
-import { useHardwareScanner } from "@/lib/useHardwareScanner";
+import { useScanHandler } from "@/components/scan/ScanProvider";
 import { parseScan } from "@/lib/barcode";
 import { beepOk, beepError } from "@/lib/sound";
 import { cn, formatPKR } from "@/lib/utils";
@@ -141,7 +141,7 @@ export function ReceiveClient({
     bump(v, 1, false);
   }
 
-  useHardwareScanner((code) => handleScan(code));
+  useScanHandler((code) => handleScan(code));
 
   function loadPO(id: string) {
     setPoId(id);

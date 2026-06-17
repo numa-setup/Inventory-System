@@ -14,7 +14,7 @@ import { useToast } from "@/components/ui/Toast";
 import { cn, formatPKR } from "@/lib/utils";
 import { useCatalog } from "@/lib/useCatalog";
 import { ensureCatalog, type CatalogItem } from "@/lib/catalog-cache";
-import { useHardwareScanner } from "@/lib/useHardwareScanner";
+import { useScanHandler } from "@/components/scan/ScanProvider";
 import { parseScan } from "@/lib/barcode";
 import { beepOk, beepError } from "@/lib/sound";
 import { CameraScanner } from "@/components/scan/CameraScannerLazy";
@@ -172,9 +172,9 @@ export function PosClient({
     if (q.trim()) handleScan(q);
   }
 
-  // Hardware scanner works even when the search box isn't focused (it only fires
-  // when no field has focus, so it never double-counts the focused search box).
-  useHardwareScanner((code) => handleScan(code));
+  // Own scans while POS is open (the global scan-anywhere sheet is suppressed).
+  // Fires only when no field is focused, so it never double-counts the search box.
+  useScanHandler((code) => handleScan(code));
 
   const lines = [...cart.values()];
   const subtotal = lines.reduce((s, l) => s + l.p.price * l.qty, 0);

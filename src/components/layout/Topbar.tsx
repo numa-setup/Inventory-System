@@ -1,7 +1,8 @@
 "use client";
 
-import { Bell, Menu, Moon, Search, Sun } from "lucide-react";
+import { Bell, Menu, Moon, ScanLine, Search, Sun } from "lucide-react";
 import { useTheme } from "@/components/theme/ThemeProvider";
+import { useScan } from "@/components/scan/ScanProvider";
 import { Avatar } from "@/components/ui/Avatar";
 
 export function Topbar({
@@ -16,6 +17,7 @@ export function Topbar({
   unreadCount?: number;
 }) {
   const { theme, toggle } = useTheme();
+  const { openCamera } = useScan();
 
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-border bg-page/80 px-4 backdrop-blur-md lg:px-6">
@@ -38,6 +40,16 @@ export function Topbar({
       </div>
 
       <div className="ml-auto flex items-center gap-1.5">
+        {/* Scan anywhere */}
+        <button
+          onClick={openCamera}
+          className="rounded-lg p-2 text-text-secondary hover:bg-surface-2"
+          aria-label="Scan barcode"
+          title="Scan a barcode"
+        >
+          <ScanLine className="h-5 w-5" />
+        </button>
+
         {/* Dark toggle */}
         <button
           onClick={toggle}
