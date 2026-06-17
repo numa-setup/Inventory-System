@@ -1,10 +1,7 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
 
-export default async function Home() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  redirect(user ? "/dashboard" : "/login");
+// The domain root is the customer storefront. Staff reach the admin via /login
+// (and the discreet "Staff" link in the storefront footer).
+export default function Home() {
+  redirect("/shop");
 }
