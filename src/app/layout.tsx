@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter, Plus_Jakarta_Sans } from "next/font/google";
+import { Inter, Plus_Jakarta_Sans, Cormorant_Garamond } from "next/font/google";
 import { Providers } from "./providers";
 import { themeScript } from "@/components/theme/ThemeProvider";
 import "./globals.css";
@@ -15,6 +15,14 @@ const inter = Inter({
   subsets: ["latin"],
   display: "swap",
   variable: "--font-body",
+});
+
+// Editorial serif for the customer storefront (display headings + wordmark).
+const cormorant = Cormorant_Garamond({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-serif",
+  weight: ["400", "500", "600"],
 });
 
 export const metadata: Metadata = {
@@ -36,7 +44,7 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body
-        className={`${jakarta.variable} ${inter.variable}`}
+        className={`${jakarta.variable} ${inter.variable} ${cormorant.variable}`}
         suppressHydrationWarning
       >
         <Providers>{children}</Providers>

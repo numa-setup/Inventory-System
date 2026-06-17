@@ -44,11 +44,23 @@ const config: Config = {
         amber: { tile: "#FCEFD9", icon: "#D97706", text: "#B45309" },
         coral: { tile: "#FCE9E7", icon: "#E2615B", text: "#B42318" },
         purple: { tile: "#F3E9FA", icon: "#7C3AED", text: "#6D28D9" },
+        // Storefront — fixed warm/editorial palette (does NOT flip with dark mode)
+        store: {
+          cream: "#F6F2EC",
+          paper: "#FBF9F5",
+          ink: "#1C1A17",
+          charcoal: "#2A2723",
+          muted: "#7A736A",
+          line: "#E3DCD0",
+          sand: "#ECE5D9",
+          olive: "#5A5B4E",
+        },
       },
       fontFamily: {
         heading: ["var(--font-heading)", "system-ui", "sans-serif"],
         body: ["var(--font-body)", "system-ui", "sans-serif"],
         sans: ["var(--font-body)", "system-ui", "sans-serif"],
+        serif: ["var(--font-serif)", "Cormorant Garamond", "Georgia", "serif"],
       },
       borderRadius: {
         "2xl": "16px",
