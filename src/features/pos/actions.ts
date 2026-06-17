@@ -4,11 +4,15 @@ import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentUser } from "@/lib/auth";
 
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
 export interface CartLine {
   variant_id: string;
   product_id: string;
   qty: number;
   unit_price: number;
+  /** Per-line discount in rupees (off the line total). */
+  discount?: number;
 }
 
 /** Quick-add a customer at the counter (returns the new id to attach immediately). */
@@ -89,13 +93,15 @@ export async function checkoutSale(input: {
     .from("variant_availability").select("variant_id, avg_cost").in("variant_id", variantIds);
   const costMap = new Map((avail ?? []).map((a) => [a.variant_id, Number(a.avg_cost)]));
 
-  let subtotal = 0, cogsTotal = 0;
+  let subtotal = 0, lineDiscTotal = 0, cogsTotal = 0;
   const items = input.lines.map((l) => {
-    const lineTotal = l.qty * l.unit_price;
+    const gross = l.qty * l.unit_price;
+    const lineDisc = Math.min(Math.max(l.discount ?? 0, 0), gross);
     const unitCogs = costMap.get(l.variant_id) ?? 0;
-    subtotal += lineTotal;
+    subtotal += gross;
+    lineDiscTotal += lineDisc;
     cogsTotal += l.qty * unitCogs;
-    return { ...l, line_total: lineTotal, unit_cogs: unitCogs };
+    return { ...l, line_total: gross - lineDisc, unit_cogs: unitCogs };
   });
 
   // Tax + invoice prefix come from settings.
@@ -103,7 +109,8 @@ export async function checkoutSale(input: {
   const taxPercent = Number(settings?.tax_percent ?? 0);
   const prefix = ((settings?.store_info as Record<string, unknown> | null)?.invoice_prefix as string) || "INV";
 
-  const discount = Math.max(input.discount ?? 0, 0);
+  // Total discount = per-line discounts + a whole-bill discount.
+  const discount = round2(lineDiscTotal + Math.max(input.discount ?? 0, 0));
   const taxable = Math.max(subtotal - discount, 0);
   const tax = Math.round(taxable * taxPercent) / 100;
   const total = Math.round((taxable + tax) * 100) / 100;
