@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ProductMedia } from "./ProductMedia";
+import { WishlistButton } from "./WishlistButton";
 import { formatPKR } from "@/lib/utils";
 import type { StoreProduct } from "@/lib/storefront";
 
@@ -15,6 +16,7 @@ export function ProductCard({ p }: { p: StoreProduct }) {
             Sold out
           </span>
         )}
+        <WishlistButton product={{ slug: p.slug, title: p.title, price: p.price, image: p.images[0] ?? p.image_url, category: p.category_name }} />
       </div>
       <div className="pt-3.5 text-center">
         {p.category_name && (

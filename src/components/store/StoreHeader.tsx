@@ -2,12 +2,14 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Search, ShoppingBag, Menu, X } from "lucide-react";
+import { Search, ShoppingBag, Heart, Menu, X } from "lucide-react";
 import { useCart } from "./CartProvider";
+import { useWishlist } from "./WishlistProvider";
 import type { StoreCategory } from "@/lib/storefront";
 
 export function StoreHeader({ storeName, categories }: { storeName: string; categories: StoreCategory[] }) {
   const { count, setOpen } = useCart();
+  const { count: wishCount } = useWishlist();
   const [shopOpen, setShopOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -45,6 +47,14 @@ export function StoreHeader({ storeName, categories }: { storeName: string; cate
           <button onClick={() => setSearchOpen((o) => !o)} className="transition-colors hover:text-store-ink" aria-label="Search">
             <Search className="h-[18px] w-[18px]" />
           </button>
+          <Link href="/shop/wishlist" className="relative transition-colors hover:text-store-ink" aria-label="Wishlist">
+            <Heart className="h-[18px] w-[18px]" />
+            {wishCount > 0 && (
+              <span className="absolute -right-2 -top-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-store-ink px-1 text-[10px] font-medium text-store-paper">
+                {wishCount}
+              </span>
+            )}
+          </Link>
           <button onClick={() => setOpen(true)} className="relative transition-colors hover:text-store-ink" aria-label="Shopping bag">
             <ShoppingBag className="h-[18px] w-[18px]" />
             {count > 0 && (

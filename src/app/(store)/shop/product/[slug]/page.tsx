@@ -5,6 +5,7 @@ import { getProductBySlug, getProductVariants, getRelated } from "@/lib/storefro
 import { ProductGallery } from "@/components/store/ProductGallery";
 import { ProductCard } from "@/components/store/ProductCard";
 import { AddToBag } from "@/components/store/AddToBag";
+import { WishlistButton } from "@/components/store/WishlistButton";
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
@@ -58,6 +59,13 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
             <div className="my-7 h-px bg-store-line" />
 
             <AddToBag product={product} variants={variants} />
+
+            <div className="mt-5">
+              <WishlistButton
+                variant="inline"
+                product={{ slug: product.slug, title: product.title, price: product.price, image: gallery[0] ?? null, category: product.category_name }}
+              />
+            </div>
 
             <div className="my-7 h-px bg-store-line" />
 
