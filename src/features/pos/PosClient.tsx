@@ -4,7 +4,7 @@ import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Search, ShoppingCart, Plus, Minus, Trash2, X, Banknote, NotebookPen,
-  CreditCard, Loader2, Package,
+  CreditCard, Loader2, Package, ScanLine, Camera, CheckCircle2, AlertTriangle,
 } from "lucide-react";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
@@ -14,6 +14,10 @@ import { useToast } from "@/components/ui/Toast";
 import { cn, formatPKR } from "@/lib/utils";
 import { useCatalog } from "@/lib/useCatalog";
 import { ensureCatalog, type CatalogItem } from "@/lib/catalog-cache";
+import { useHardwareScanner } from "@/lib/useHardwareScanner";
+import { parseScan } from "@/lib/barcode";
+import { beepOk, beepError } from "@/lib/sound";
+import { CameraScanner } from "@/components/scan/CameraScannerLazy";
 import { checkoutSale } from "./actions";
 
 export interface PosProduct {
@@ -76,8 +80,22 @@ export function PosClient({
   const [discount, setDiscount] = useState("");
   const [processing, setProcessing] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [lastScan, setLastScan] = useState<{ ok: boolean; text: string } | null>(null);
+  const scanTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const byId = useMemo(() => new Map(products.map((p) => [p.variant_id, p])), [products]);
+  const byBarcode = useMemo(() => {
+    const m = new Map<string, PosProduct>();
+    for (const p of products) if (p.barcode) m.set(p.barcode, p);
+    return m;
+  }, [products]);
+
+  function flash(ok: boolean, text: string) {
+    setLastScan({ ok, text });
+    if (scanTimer.current) clearTimeout(scanTimer.current);
+    scanTimer.current = setTimeout(() => setLastScan(null), 2200);
+  }
 
   const filtered = useMemo(() => {
     const t = q.trim().toLowerCase();
@@ -108,14 +126,55 @@ export function PosClient({
     });
   }
 
+  // Single resolve path for every input: hardware scanner, camera, or typed code.
+  function handleScan(raw: string) {
+    const parsed = parseScan(raw);
+    const p =
+      byBarcode.get(parsed.lookupKey) ||
+      byBarcode.get(parsed.barcode) ||
+      (barcodeIndex[parsed.lookupKey] ? byId.get(barcodeIndex[parsed.lookupKey]) : undefined) ||
+      (barcodeIndex[parsed.barcode] ? byId.get(barcodeIndex[parsed.barcode]) : undefined);
+
+    if (!p) {
+      // not a known barcode — fall back to a unique text-search match
+      const t = raw.trim().toLowerCase();
+      const matches = products.filter(
+        (x) => x.name.toLowerCase().includes(t) || x.sku.toLowerCase().includes(t) || (x.barcode ?? "").includes(t),
+      );
+      if (matches.length === 1) {
+        add(matches[0]);
+        setQ("");
+        beepOk();
+        flash(true, `Added ${matches[0].name}`);
+        return;
+      }
+      beepError();
+      flash(false, `Unknown code: ${parsed.barcode}`);
+      return;
+    }
+
+    if (p.available <= 0) {
+      beepError();
+      flash(false, `${p.name} is out of stock`);
+      return;
+    }
+
+    const qty = parsed.isWeightEmbedded && parsed.weight ? parsed.weight : 1;
+    add(p, qty);
+    setQ("");
+    beepOk();
+    flash(true, parsed.isWeightEmbedded ? `${p.name} · ${qty.toFixed(3)} kg` : `Added ${p.name}`);
+  }
+
   function onScan(e: React.KeyboardEvent) {
     if (e.key !== "Enter") return;
     e.preventDefault();
-    const code = q.trim();
-    const vid = barcodeIndex[code];
-    if (vid && byId.get(vid)) { add(byId.get(vid)!); setQ(""); toast(`Added ${byId.get(vid)!.name}`); }
-    else if (filtered.length === 1) { add(filtered[0]); setQ(""); }
+    if (q.trim()) handleScan(q);
   }
+
+  // Hardware scanner works even when the search box isn't focused (it only fires
+  // when no field has focus, so it never double-counts the focused search box).
+  useHardwareScanner((code) => handleScan(code));
 
   const lines = [...cart.values()];
   const subtotal = lines.reduce((s, l) => s + l.p.price * l.qty, 0);
@@ -145,11 +204,35 @@ export function PosClient({
     <div className="grid h-[calc(100vh-7rem)] grid-cols-1 gap-4 lg:grid-cols-[1fr_360px]">
       {/* product area */}
       <div className="flex min-h-0 flex-col">
-        <div className="relative mb-3">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-tertiary" />
-          <Input ref={searchRef} autoFocus value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={onScan}
-            placeholder="Scan barcode or search product…" className="h-12 pl-10 text-base" />
+        <div className="mb-3 flex items-center gap-2">
+          <div className="relative flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-tertiary" />
+            <Input ref={searchRef} autoFocus value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={onScan}
+              placeholder="Scan barcode or search product…" className="h-12 pl-10 text-base" />
+          </div>
+          <button
+            type="button"
+            onClick={() => setCameraOpen(true)}
+            title="Scan with camera"
+            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-border bg-surface text-text-secondary transition-colors hover:bg-surface-2"
+          >
+            <Camera className="h-5 w-5" />
+          </button>
         </div>
+
+        {/* per-scan confirmation / warning */}
+        {lastScan && (
+          <div className={cn(
+            "mb-3 flex items-center gap-2 rounded-xl border px-3 py-2 text-sm animate-fade-in",
+            lastScan.ok
+              ? "border-green-icon/30 bg-green-tile text-green-text"
+              : "border-coral-icon/30 bg-coral-tile text-coral-text",
+          )}>
+            {lastScan.ok ? <CheckCircle2 className="h-4 w-4 shrink-0" /> : <AlertTriangle className="h-4 w-4 shrink-0" />}
+            <span className="truncate">{lastScan.text}</span>
+            <ScanLine className="ml-auto h-4 w-4 opacity-60" />
+          </div>
+        )}
 
         <div className="mb-3 flex gap-2 overflow-x-auto pb-1 scrollbar-thin">
           <Chip active={cat === ""} onClick={() => setCat("")}>All</Chip>
@@ -230,6 +313,14 @@ export function PosClient({
           </div>
         </div>
       )}
+
+      <CameraScanner
+        open={cameraOpen}
+        onClose={() => setCameraOpen(false)}
+        onResult={(code) => handleScan(code)}
+        continuous
+        title="Scan to add to cart"
+      />
     </div>
   );
 }
