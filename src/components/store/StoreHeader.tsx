@@ -10,6 +10,7 @@ export function StoreHeader({ storeName, categories }: { storeName: string; cate
   const { count, setOpen } = useCart();
   const [shopOpen, setShopOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const wordmark = storeName.toUpperCase();
 
   return (
@@ -41,9 +42,9 @@ export function StoreHeader({ storeName, categories }: { storeName: string; cate
 
         {/* right icons */}
         <div className="flex items-center justify-end gap-5 text-store-charcoal">
-          <Link href="/shop?focus=search" className="hidden transition-colors hover:text-store-ink sm:block" aria-label="Search">
+          <button onClick={() => setSearchOpen((o) => !o)} className="transition-colors hover:text-store-ink" aria-label="Search">
             <Search className="h-[18px] w-[18px]" />
-          </Link>
+          </button>
           <button onClick={() => setOpen(true)} className="relative transition-colors hover:text-store-ink" aria-label="Shopping bag">
             <ShoppingBag className="h-[18px] w-[18px]" />
             {count > 0 && (
@@ -93,6 +94,22 @@ export function StoreHeader({ storeName, categories }: { storeName: string; cate
           </div>
         )}
       </div>
+
+      {/* search overlay */}
+      {searchOpen && (
+        <div className="border-t border-store-line bg-store-paper">
+          <form action="/shop" method="get" onSubmit={() => setSearchOpen(false)} className="mx-auto flex max-w-3xl items-center gap-3 px-5 py-5 lg:px-10">
+            <Search className="h-5 w-5 text-store-muted" />
+            <input
+              name="q"
+              autoFocus
+              placeholder="Search products…"
+              className="flex-1 bg-transparent font-serif text-xl text-store-ink placeholder:text-store-muted focus:outline-none"
+            />
+            <button type="button" onClick={() => setSearchOpen(false)} aria-label="Close search"><X className="h-5 w-5 text-store-charcoal" /></button>
+          </form>
+        </div>
+      )}
 
       {/* mobile menu */}
       {mobileOpen && (

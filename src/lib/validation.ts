@@ -112,6 +112,26 @@ export const variantPatchSchema = z.object({
   active: z.boolean().optional(),
 });
 
+// ---- Storefront checkout ------------------------------------------------
+export const placeOrderSchema = z.object({
+  items: z.array(z.object({
+    variant_id: uuid,
+    product_id: uuid,
+    qty,
+    unit_price: money,
+    title: z.string().min(1),
+    variant_label: z.string().nullable().optional(),
+  })).min(1, "Your bag is empty."),
+  customer: z.object({
+    name: z.string().trim().min(1, "Please enter your name."),
+    phone: z.string().trim().min(7, "Please enter a valid phone number."),
+    address: z.string().trim().min(5, "Please enter your delivery address."),
+    email: z.union([z.string().email(), z.literal("")]).nullable().optional(),
+  }),
+  payment_type: z.enum(["COD"]),
+  note: z.string().nullable().optional(),
+});
+
 export const importRowsSchema = z.array(z.object({
   name: z.string(),
   sku: z.string(),

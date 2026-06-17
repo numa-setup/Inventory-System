@@ -120,6 +120,66 @@ export async function getProductVariants(productId: string): Promise<StoreVarian
     .sort((a, b) => a.label.localeCompare(b.label));
 }
 
+export interface DeliveryConfig {
+  fee: number;
+  freeOver: number;
+}
+
+export async function getDeliveryConfig(): Promise<DeliveryConfig> {
+  const db = createAdminClient();
+  const { data } = await db.from("settings").select("store_info").eq("id", 1).maybeSingle();
+  const info = (data?.store_info ?? {}) as Record<string, unknown>;
+  return { fee: Number(info.delivery_fee ?? 150), freeOver: Number(info.free_delivery_over ?? 2500) };
+}
+
+export interface StoreOrder {
+  order_no: string;
+  status: string;
+  customer_name: string;
+  customer_phone: string;
+  address: string | null;
+  payment_type: string;
+  subtotal: number;
+  delivery_fee: number;
+  total: number;
+  created_at: string;
+  items: { title: string; qty: number; unit_price: number; line_total: number }[];
+}
+
+export async function getOrderByNo(orderNo: string): Promise<StoreOrder | null> {
+  const db = createAdminClient();
+  const { data: order } = await db
+    .from("orders")
+    .select("id, order_no, status, customer_name, customer_phone, address, payment_type, subtotal, delivery_fee, total, created_at")
+    .eq("order_no", orderNo)
+    .maybeSingle();
+  if (!order) return null;
+
+  const { data: items } = await db.from("order_items").select("product_id, qty, unit_price, line_total").eq("order_id", order.id);
+  const ids = [...new Set((items ?? []).map((i) => i.product_id))];
+  const { data: prods } = ids.length ? await db.from("products").select("id, name").in("id", ids) : { data: [] as { id: string; name: string }[] };
+  const nameMap = new Map((prods ?? []).map((p) => [p.id, p.name as string]));
+
+  return {
+    order_no: order.order_no,
+    status: order.status,
+    customer_name: order.customer_name,
+    customer_phone: order.customer_phone,
+    address: order.address,
+    payment_type: order.payment_type,
+    subtotal: Number(order.subtotal),
+    delivery_fee: Number(order.delivery_fee),
+    total: Number(order.total),
+    created_at: order.created_at,
+    items: (items ?? []).map((i) => ({
+      title: nameMap.get(i.product_id) ?? "Item",
+      qty: Number(i.qty),
+      unit_price: Number(i.unit_price),
+      line_total: Number(i.line_total),
+    })),
+  };
+}
+
 export async function getRelated(categoryName: string | null, excludeSlug: string, limit = 4): Promise<StoreProduct[]> {
   const db = createAdminClient();
   let query = db.from("store_catalog").select(SELECT).neq("slug", excludeSlug).limit(limit);
