@@ -16,9 +16,7 @@ import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { FilterBar } from "@/components/ui/FilterBar";
-import { AreaTrend } from "@/components/charts/AreaTrend";
-import { BarTrend } from "@/components/charts/BarTrend";
-import { DonutChart } from "@/components/charts/DonutChart";
+import { AreaTrend, BarTrend, DonutChart } from "@/components/charts";
 import { formatPKR, formatNumber } from "@/lib/utils";
 import type { DashboardData } from "./queries";
 
