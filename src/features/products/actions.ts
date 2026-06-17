@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser } from "@/lib/auth";
 import { fetchProductsPage, type ProductsQuery, type ProductsPage } from "@/lib/products-query";
 import { generateInternalEan13, generateWeightTemplateEan13 } from "@/lib/barcode";
+import { productInputSchema, variantPatchSchema, importRowsSchema, firstIssue } from "@/lib/validation";
 
 /**
  * Server-side paginated + filtered product search. Powers the Products list's
@@ -58,9 +59,9 @@ export interface ProductInput {
 export async function createProduct(input: ProductInput) {
   const user = await requireManager();
   if (!user) return { error: "Not authorized." };
+  const parsed = productInputSchema.safeParse(input);
+  if (!parsed.success) return { error: firstIssue(parsed.error) };
   const db = createAdminClient();
-
-  if (!input.variants?.length) return { error: "At least one variant is required." };
 
   // 1. Parent product
   const { data: product, error } = await db
@@ -203,6 +204,8 @@ export async function updateVariant(
   input: { sale_price?: number; cost?: number; reorder_point?: number; active?: boolean },
 ) {
   if (!(await requireManager())) return { error: "Not authorized." };
+  const v = variantPatchSchema.safeParse(input);
+  if (!v.success) return { error: firstIssue(v.error) };
   const db = createAdminClient();
   const { error } = await db.from("product_variants").update(input).eq("id", id);
   if (error) return { error: error.message };
@@ -267,12 +270,16 @@ async function validateRows(db: Db, rows: ImportRow[]): Promise<ValidatedRow[]> 
 /** Dry-run: validate the parsed CSV rows without writing anything. */
 export async function validateProductImport(rows: ImportRow[]): Promise<ValidatedRow[] | { error: string }> {
   if (!(await requireManager())) return { error: "Not authorized." };
+  const v = importRowsSchema.safeParse(rows);
+  if (!v.success) return { error: firstIssue(v.error) };
   return validateRows(createAdminClient(), rows);
 }
 
 /** Import only the rows that pass validation; posts opening stock for qty > 0. */
 export async function importProducts(rows: ImportRow[]) {
   if (!(await requireManager())) return { error: "Not authorized." };
+  const v = importRowsSchema.safeParse(rows);
+  if (!v.success) return { error: firstIssue(v.error) };
   const db = createAdminClient();
   const validated = await validateRows(db, rows);
   const valid = validated.filter((r) => r.status === "ok");

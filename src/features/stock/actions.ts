@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentUser } from "@/lib/auth";
+import { stockInSchema, adjustSchema, transferSchema, cycleCountSchema, firstIssue } from "@/lib/validation";
 
 type Db = ReturnType<typeof createAdminClient>;
 
@@ -57,7 +58,8 @@ export async function stockIn(input: {
 }) {
   const user = await requireManager();
   if (!user) return { error: "Not authorized." };
-  if (!input.qty || input.qty <= 0) return { error: "Quantity must be greater than 0." };
+  const v = stockInSchema.safeParse(input);
+  if (!v.success) return { error: firstIssue(v.error) };
 
   const db = createAdminClient();
   const locs = await locationIds(db);
@@ -97,7 +99,8 @@ export async function adjustStock(input: {
 }) {
   const user = await requireManager();
   if (!user) return { error: "Not authorized." };
-  if (!input.qty || input.qty <= 0) return { error: "Quantity must be greater than 0." };
+  const v = adjustSchema.safeParse(input);
+  if (!v.success) return { error: firstIssue(v.error) };
 
   const db = createAdminClient();
   const locs = await locationIds(db);
@@ -137,7 +140,8 @@ export async function transferStock(input: {
 }) {
   const user = await requireManager();
   if (!user) return { error: "Not authorized." };
-  if (!input.qty || input.qty <= 0) return { error: "Quantity must be greater than 0." };
+  const v = transferSchema.safeParse(input);
+  if (!v.success) return { error: firstIssue(v.error) };
   if (input.from_code === input.to_code) return { error: "Pick two different locations." };
 
   const db = createAdminClient();
@@ -174,7 +178,8 @@ export async function cycleCount(input: {
 }) {
   const user = await requireManager();
   if (!user) return { error: "Not authorized." };
-  if (input.counted_qty < 0) return { error: "Counted quantity can’t be negative." };
+  const v = cycleCountSchema.safeParse(input);
+  if (!v.success) return { error: firstIssue(v.error) };
 
   const diff = input.counted_qty - input.current_qty;
   if (diff === 0) return { error: "Counted quantity matches the system — no move needed." };

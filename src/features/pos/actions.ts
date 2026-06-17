@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentUser } from "@/lib/auth";
+import { checkoutSchema, customerQuickSchema, firstIssue } from "@/lib/validation";
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -19,7 +20,8 @@ export interface CartLine {
 export async function quickAddCustomer(name: string, phone?: string | null) {
   const user = await getCurrentUser();
   if (!user) return { error: "Not authorized." };
-  if (!name.trim()) return { error: "Name is required." };
+  const v = customerQuickSchema.safeParse({ name, phone });
+  if (!v.success) return { error: firstIssue(v.error) };
   const db = createAdminClient();
   const { data, error } = await db
     .from("customers")
@@ -59,8 +61,8 @@ export async function checkoutSale(input: {
 }): Promise<CheckoutResult | { error: string }> {
   const user = await getCurrentUser();
   if (!user) return { error: "Not authorized." };
-  if (!input.lines.length) return { error: "Cart is empty." };
-  if (!input.payments?.length) return { error: "Add a payment." };
+  const parsed = checkoutSchema.safeParse(input);
+  if (!parsed.success) return { error: firstIssue(parsed.error) };
 
   const hasUdhaar = input.payments.some((p) => p.method === "UDHAAR");
   if (hasUdhaar && !input.customer_id) {

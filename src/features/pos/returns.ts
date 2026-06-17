@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentUser } from "@/lib/auth";
+import { returnSchema, firstIssue } from "@/lib/validation";
 import type { PayMethod } from "./actions";
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -91,6 +92,8 @@ export async function processReturn(input: {
 }) {
   const user = await getCurrentUser();
   if (!user) return { error: "Not authorized." };
+  const parsed = returnSchema.safeParse(input);
+  if (!parsed.success) return { error: firstIssue(parsed.error) };
   const picked = input.items.filter((i) => i.qty > 0);
   if (!picked.length) return { error: "Select at least one item to return." };
 
