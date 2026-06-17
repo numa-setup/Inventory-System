@@ -4,8 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentUser } from "@/lib/auth";
 import { checkoutSchema, customerQuickSchema, firstIssue } from "@/lib/validation";
-
-const round2 = (n: number) => Math.round(n * 100) / 100;
+import { computeTotals, paymentsSettle, round2 } from "@/lib/pricing";
 
 export interface CartLine {
   variant_id: string;
@@ -105,13 +104,11 @@ export async function checkoutSale(input: {
     }
   }
 
-  let subtotal = 0, lineDiscTotal = 0, cogsTotal = 0;
+  let cogsTotal = 0;
   const items = input.lines.map((l) => {
     const gross = l.qty * l.unit_price;
     const lineDisc = Math.min(Math.max(l.discount ?? 0, 0), gross);
     const unitCogs = costMap.get(l.variant_id) ?? 0;
-    subtotal += gross;
-    lineDiscTotal += lineDisc;
     cogsTotal += l.qty * unitCogs;
     return { ...l, line_total: gross - lineDisc, unit_cogs: unitCogs };
   });
@@ -121,17 +118,14 @@ export async function checkoutSale(input: {
   const taxPercent = Number(settings?.tax_percent ?? 0);
   const prefix = ((settings?.store_info as Record<string, unknown> | null)?.invoice_prefix as string) || "INV";
 
-  // Total discount = per-line discounts + a whole-bill discount.
-  const discount = round2(lineDiscTotal + Math.max(input.discount ?? 0, 0));
-  const taxable = Math.max(subtotal - discount, 0);
-  const tax = Math.round(taxable * taxPercent) / 100;
-  const total = Math.round((taxable + tax) * 100) / 100;
+  // Shared money math (identical on the client) — line + bill discounts and tax.
+  const { subtotal, discount, tax, total } = computeTotals(input.lines, input.discount ?? 0, taxPercent);
   const profit = total - tax - cogsTotal;
 
   // Payments must settle the bill exactly (cash change is handled in the UI;
   // the applied cash amount is sent, not the tendered amount).
-  const paid = input.payments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
-  if (Math.abs(paid - total) > 0.5) {
+  if (!paymentsSettle(total, input.payments)) {
+    const paid = input.payments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
     return { error: `Payments (Rs ${paid.toFixed(0)}) must equal the total (Rs ${total.toFixed(0)}).` };
   }
 

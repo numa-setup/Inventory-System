@@ -24,6 +24,7 @@ import { Receipt } from "./Receipt";
 import { ReturnsSheet } from "./ReturnsSheet";
 import { checkoutSale, type PaymentInput } from "./actions";
 import { enqueueSale, getQueue, removeFromQueue, queueCount, type QueuedSalePayload } from "@/lib/pos-queue";
+import { computeTotals } from "@/lib/pricing";
 import { printReceipt, type ReceiptData } from "@/lib/receipt";
 
 export interface StoreSettings {
@@ -251,12 +252,11 @@ export function PosClient({
   }
 
   const lines = [...cart.values()];
-  const subtotal = lines.reduce((s, l) => s + l.p.price * l.qty, 0);
-  const lineDiscTotal = lines.reduce((s, l) => s + Math.min(lineDisc.get(l.p.variant_id) || 0, l.p.price * l.qty), 0);
-  const disc = round2(lineDiscTotal + (Number(discount) || 0));
-  const taxable = Math.max(subtotal - disc, 0);
-  const tax = Math.round(taxable * store.tax_percent) / 100;
-  const total = round2(taxable + tax);
+  const { subtotal, discount: disc, tax, total } = computeTotals(
+    lines.map((l) => ({ qty: l.qty, unit_price: l.p.price, discount: lineDisc.get(l.p.variant_id) || 0 })),
+    Number(discount) || 0,
+    store.tax_percent,
+  );
   const count = lines.reduce((s, l) => s + l.qty, 0);
   // Margin guard: any line whose net unit price is below its weighted-avg cost.
   const belowCost = lines.some((l) => {
