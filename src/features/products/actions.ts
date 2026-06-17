@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser } from "@/lib/auth";
 import { fetchProductsPage, type ProductsQuery, type ProductsPage } from "@/lib/products-query";
+import { generateInternalEan13, generateWeightTemplateEan13 } from "@/lib/barcode";
 
 /**
  * Server-side paginated + filtered product search. Powers the Products list's
@@ -207,6 +208,41 @@ export async function updateVariant(
   if (error) return { error: error.message };
   revalidatePath("/products");
   return { ok: true };
+}
+
+/**
+ * Ensure a variant has a scannable barcode. If it already has one, return it;
+ * otherwise generate an internal GS1 prefix-2 EAN-13 (or a weight template for
+ * variable-weight items), save it, and return it. Used by the label printer.
+ */
+export async function assignInternalBarcode(variantId: string, productId: string, variableWeight = false) {
+  if (!(await requireManager())) return { error: "Not authorized." };
+  const db = createAdminClient();
+
+  const { data: existing } = await db
+    .from("product_barcodes")
+    .select("barcode, is_primary")
+    .eq("variant_id", variantId)
+    .order("is_primary", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (existing?.barcode) return { ok: true, barcode: existing.barcode as string, existed: true };
+
+  const { data: seq, error: seqErr } = await db.rpc("next_internal_barcode");
+  if (seqErr) return { error: seqErr.message };
+  const n = Number(seq);
+  const barcode = variableWeight ? generateWeightTemplateEan13(n) : generateInternalEan13(n);
+
+  const { error } = await db.from("product_barcodes").insert({
+    product_id: productId,
+    variant_id: variantId,
+    barcode,
+    type: "INTERNAL",
+    is_primary: true,
+  });
+  if (error) return { error: error.message };
+  revalidatePath("/products");
+  return { ok: true, barcode, existed: false };
 }
 
 /** Bulk set the sale price on every variant of a product. */

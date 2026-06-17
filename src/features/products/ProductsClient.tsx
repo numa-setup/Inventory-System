@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Plus, Search, Package, Loader2, Barcode, ChevronRight, ChevronDown,
-  Pencil, Wand2, Layers, Tag,
+  Pencil, Wand2, Layers, Tag, QrCode,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
@@ -20,6 +20,7 @@ import { ExportMenu } from "@/components/ui/ExportMenu";
 import { cn, formatPKR } from "@/lib/utils";
 import { createProduct, updateVariant, bulkSetPrice, searchProducts, type ProductInput, type VariantInput } from "./actions";
 import { PRODUCTS_PAGE_SIZE, type ProductRow, type VariantRow, type ProductsPage } from "@/lib/products-query";
+import { LabelDialog, type LabelTarget } from "./LabelDialog";
 
 export type { ProductRow, VariantRow };
 
@@ -52,6 +53,7 @@ export function ProductsClient({
   const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [editVariant, setEditVariant] = useState<VariantRow | null>(null);
+  const [labelTarget, setLabelTarget] = useState<LabelTarget | null>(null);
 
   // Debounce the search box so we hit the server (indexed columns) at most
   // ~4×/sec while typing instead of on every keystroke.
@@ -202,6 +204,11 @@ export function ProductsClient({
               isOpen={expanded.has(p.id)}
               onToggle={() => toggle(p.id)}
               onEditVariant={(v) => setEditVariant(v)}
+              onLabel={(v) => setLabelTarget({
+                variant_id: v.id, product_id: p.id, name: p.name, label: v.label,
+                sku: v.sku, sale_price: v.sale_price, barcode: v.barcode,
+                is_variable_weight: p.is_variable_weight,
+              })}
               onBulkPrice={async (price) => {
                 const res = await bulkSetPrice(p.id, price);
                 if (res?.error) return toast(res.error, "error");
@@ -235,6 +242,12 @@ export function ProductsClient({
         onSaved={() => { setEditVariant(null); toast("Variant updated"); refreshList(); }}
         onError={(m) => toast(m, "error")}
       />
+
+      <LabelDialog
+        target={labelTarget}
+        onClose={() => setLabelTarget(null)}
+        onChanged={refreshList}
+      />
     </div>
   );
 }
@@ -242,12 +255,13 @@ export function ProductsClient({
 /* ---------------- Expandable product group ---------------- */
 
 function ProductGroup({
-  p, isOpen, onToggle, onEditVariant, onBulkPrice,
+  p, isOpen, onToggle, onEditVariant, onLabel, onBulkPrice,
 }: {
   p: ProductRow;
   isOpen: boolean;
   onToggle: () => void;
   onEditVariant: (v: VariantRow) => void;
+  onLabel: (v: VariantRow) => void;
   onBulkPrice: (price: number) => void;
 }) {
   const [bulk, setBulk] = useState("");
@@ -343,12 +357,21 @@ function ProductGroup({
                     <td className="px-3 py-2 text-right tnum text-text-tertiary">{v.reorder_point}</td>
                     <td className="px-3 py-2"><StatusPill status={variantTone(v)} /></td>
                     <td className="px-3 py-2 text-right">
-                      <button
-                        onClick={() => onEditVariant(v)}
-                        className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-text-secondary hover:bg-surface-2"
-                      >
-                        <Pencil className="h-3 w-3" /> Edit
-                      </button>
+                      <div className="flex items-center justify-end gap-1">
+                        <button
+                          onClick={() => onLabel(v)}
+                          title={v.barcode ? "Print label" : "Generate barcode & print label"}
+                          className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-text-secondary hover:bg-surface-2"
+                        >
+                          <QrCode className="h-3 w-3" /> Label
+                        </button>
+                        <button
+                          onClick={() => onEditVariant(v)}
+                          className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-text-secondary hover:bg-surface-2"
+                        >
+                          <Pencil className="h-3 w-3" /> Edit
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
