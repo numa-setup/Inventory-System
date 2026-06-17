@@ -1,9 +1,10 @@
 "use client";
 
-import { Bell, Menu, Moon, ScanLine, Sun } from "lucide-react";
+import { Menu, Moon, ScanLine, Sun } from "lucide-react";
 import { useTheme } from "@/components/theme/ThemeProvider";
 import { useScan } from "@/components/scan/ScanProvider";
 import { GlobalSearch } from "./GlobalSearch";
+import { NotificationsBell } from "./NotificationsBell";
 import { Avatar } from "@/components/ui/Avatar";
 
 export function Topbar({
@@ -58,17 +59,7 @@ export function Topbar({
         </button>
 
         {/* Notifications */}
-        <button
-          className="relative rounded-lg p-2 text-text-secondary hover:bg-surface-2"
-          aria-label="Notifications"
-        >
-          <Bell className="h-5 w-5" />
-          {unreadCount > 0 && (
-            <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-coral-icon px-1 text-[10px] font-bold text-white">
-              {unreadCount > 9 ? "9+" : unreadCount}
-            </span>
-          )}
-        </button>
+        <NotificationsBell unread={unreadCount} />
 
         {/* Profile */}
         <div className="ml-1 flex items-center gap-2.5 rounded-lg py-1 pl-1 pr-2 hover:bg-surface-2">
