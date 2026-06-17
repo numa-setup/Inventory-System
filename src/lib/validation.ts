@@ -128,7 +128,7 @@ export const placeOrderSchema = z.object({
     address: z.string().trim().min(5, "Please enter your delivery address."),
     email: z.union([z.string().email(), z.literal("")]).nullable().optional(),
   }),
-  payment_type: z.enum(["COD"]),
+  payment_type: z.enum(["COD", "CARD", "JAZZCASH", "EASYPAISA", "WALLET"]),
   note: z.string().nullable().optional(),
 });
 

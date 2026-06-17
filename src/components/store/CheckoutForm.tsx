@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Loader2, Truck } from "lucide-react";
+import { Loader2, Truck, CreditCard } from "lucide-react";
 import { useCart } from "./CartProvider";
 import { ProductMedia } from "./ProductMedia";
 import { formatPKR } from "@/lib/utils";
@@ -14,6 +14,7 @@ export function CheckoutForm({ config }: { config: DeliveryConfig }) {
   const router = useRouter();
   const { items, subtotal, clear } = useCart();
   const [form, setForm] = useState({ name: "", phone: "", address: "", email: "", note: "" });
+  const [pay, setPay] = useState<"COD" | "ONLINE">("COD");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
 
@@ -32,13 +33,13 @@ export function CheckoutForm({ config }: { config: DeliveryConfig }) {
         title: it.title, variant_label: it.variantLabel,
       })),
       customer: { name: form.name, phone: form.phone, address: form.address, email: form.email || null },
-      payment_type: "COD",
+      payment_type: pay === "ONLINE" ? "CARD" : "COD",
       note: form.note || null,
     });
     setBusy(false);
     if ("error" in res) return setError(res.error);
     clear();
-    router.push(`/shop/order/${res.order_no}`);
+    router.push(res.requires_payment ? `/shop/pay/${res.order_no}` : `/shop/order/${res.order_no}`);
   }
 
   if (!items.length) {
@@ -71,13 +72,13 @@ export function CheckoutForm({ config }: { config: DeliveryConfig }) {
 
           <h2 className="mt-10 font-serif text-xl text-store-ink">Payment</h2>
           <div className="mt-4 space-y-2">
-            <label className="flex cursor-pointer items-center gap-3 border border-store-ink bg-store-paper px-4 py-3">
-              <input type="radio" checked readOnly className="accent-store-ink" />
+            <label className={`flex cursor-pointer items-center gap-3 border px-4 py-3 transition-colors ${pay === "COD" ? "border-store-ink bg-store-paper" : "border-store-line"}`}>
+              <input type="radio" name="pay" checked={pay === "COD"} onChange={() => setPay("COD")} className="accent-store-ink" />
               <span className="flex items-center gap-2 text-sm text-store-ink"><Truck className="h-4 w-4" /> Cash on Delivery</span>
             </label>
-            <label className="flex items-center gap-3 border border-store-line px-4 py-3 opacity-50">
-              <input type="radio" disabled className="accent-store-ink" />
-              <span className="text-sm text-store-charcoal">Card / wallet — coming soon</span>
+            <label className={`flex cursor-pointer items-center gap-3 border px-4 py-3 transition-colors ${pay === "ONLINE" ? "border-store-ink bg-store-paper" : "border-store-line"}`}>
+              <input type="radio" name="pay" checked={pay === "ONLINE"} onChange={() => setPay("ONLINE")} className="accent-store-ink" />
+              <span className="flex items-center gap-2 text-sm text-store-ink"><CreditCard className="h-4 w-4" /> Pay online — Card / JazzCash / Easypaisa</span>
             </label>
           </div>
 
@@ -112,9 +113,9 @@ export function CheckoutForm({ config }: { config: DeliveryConfig }) {
               <span className="font-serif text-lg text-store-ink">{formatPKR(total)}</span>
             </div>
             <button type="submit" disabled={busy} className="mt-6 flex w-full items-center justify-center gap-2 bg-store-ink py-3.5 text-xs uppercase tracking-[0.18em] text-store-paper transition-opacity hover:opacity-90 disabled:opacity-50">
-              {busy && <Loader2 className="h-4 w-4 animate-spin" />} Place order
+              {busy && <Loader2 className="h-4 w-4 animate-spin" />} {pay === "ONLINE" ? "Continue to payment" : "Place order"}
             </button>
-            <p className="mt-3 text-center text-xs text-store-muted">You’ll pay on delivery.</p>
+            <p className="mt-3 text-center text-xs text-store-muted">{pay === "ONLINE" ? "Secure online payment on the next step." : "You’ll pay on delivery."}</p>
           </div>
         </div>
       </form>
