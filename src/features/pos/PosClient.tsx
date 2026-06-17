@@ -12,6 +12,8 @@ import { Button } from "@/components/ui/Button";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { useToast } from "@/components/ui/Toast";
 import { cn, formatPKR } from "@/lib/utils";
+import { useCatalog } from "@/lib/useCatalog";
+import { ensureCatalog, type CatalogItem } from "@/lib/catalog-cache";
 import { checkoutSale } from "./actions";
 
 export interface PosProduct {
@@ -29,8 +31,22 @@ export interface PosProduct {
 type Pay = "CASH" | "UDHAAR" | "CARD";
 function tone(p: PosProduct) { return p.available <= 0 ? "out_of_stock" : p.available <= 5 ? "low_stock" : "in_stock"; }
 
+function toPos(it: CatalogItem): PosProduct {
+  return {
+    variant_id: it.variant_id,
+    product_id: it.product_id,
+    name: it.product_name,
+    label: it.has_variants ? it.label : "",
+    sku: it.sku,
+    barcode: it.barcode,
+    price: it.price,
+    available: it.available,
+    category_id: it.category_id,
+  };
+}
+
 export function PosClient({
-  products, categories, barcodeIndex, customers,
+  products: initialProducts, categories, barcodeIndex: initialBarcodeIndex, customers,
 }: {
   products: PosProduct[];
   categories: { id: string; name: string }[];
@@ -39,6 +55,20 @@ export function PosClient({
 }) {
   const router = useRouter();
   const toast = useToast();
+
+  // Local catalogue cache: instant scan/search, live stock, works offline.
+  // Falls back to the server-rendered props until the cache has hydrated.
+  const snap = useCatalog();
+  const products = useMemo(
+    () => (snap ? snap.items.filter((i) => i.active).map(toPos) : initialProducts),
+    [snap, initialProducts],
+  );
+  const barcodeIndex = useMemo(() => {
+    if (!snap) return initialBarcodeIndex;
+    const m: Record<string, string> = {};
+    for (const it of snap.items) if (it.barcode) m[it.barcode] = it.variant_id;
+    return m;
+  }, [snap, initialBarcodeIndex]);
   const [q, setQ] = useState("");
   const [cat, setCat] = useState("");
   const [cart, setCart] = useState<Map<string, { p: PosProduct; qty: number }>>(new Map());
@@ -106,6 +136,7 @@ export function PosClient({
     if (res?.error) return toast(res.error, "error");
     toast(`Sale complete · ${res.receipt_no ?? ""} · ${formatPKR(res.total ?? total)}`);
     setCart(new Map()); setDiscount(""); setCustomerId(""); setSheetOpen(false);
+    void ensureCatalog({ force: true }); // reconcile stock after the deduction
     router.refresh();
     searchRef.current?.focus();
   }

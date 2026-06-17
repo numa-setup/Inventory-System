@@ -1,31 +1,34 @@
 import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
-import { getVariantOptions } from "@/lib/catalog";
 import { PosClient, type PosProduct } from "@/features/pos/PosClient";
 
 export const metadata: Metadata = { title: "POS Billing" };
 
 export default async function PosPage() {
   const supabase = await createClient();
-  const [variants, { data: availability }, { data: customers }, { data: categories }] = await Promise.all([
-    getVariantOptions(supabase),
-    supabase.from("variant_availability").select("variant_id, available"),
+  // SSR first paint from the single catalogue_index view (1 query instead of the
+  // old 5-query JS assembly); the client then takes over with the cached index.
+  const [{ data: catalog }, { data: customers }, { data: categories }] = await Promise.all([
+    supabase
+      .from("catalog_index")
+      .select("variant_id, product_id, product_name, has_variants, sku, label, barcode, price, category_id, available")
+      .eq("active", true)
+      .order("product_name"),
     supabase.from("customers").select("id, name, phone").order("name"),
     supabase.from("categories").select("id, name, parent_id"),
   ]);
 
-  const availMap = new Map((availability ?? []).map((a) => [a.variant_id, Number(a.available)]));
   const catName = new Map((categories ?? []).map((c) => [c.id, c.name]));
 
-  const items: PosProduct[] = variants.map((v) => ({
+  const items: PosProduct[] = (catalog ?? []).map((v) => ({
     variant_id: v.variant_id,
     product_id: v.product_id,
     name: v.product_name,
     label: v.has_variants ? v.label : "",
     sku: v.sku,
     barcode: v.barcode,
-    price: v.sale_price,
-    available: availMap.get(v.variant_id) ?? 0,
+    price: Number(v.price),
+    available: Number(v.available),
     category_id: v.category_id,
   }));
 
@@ -37,7 +40,7 @@ export default async function PosPage() {
     .sort((a, b) => a.name.localeCompare(b.name));
 
   const barcodeIndex: Record<string, string> = {};
-  for (const v of variants) if (v.barcode) barcodeIndex[v.barcode] = v.variant_id;
+  for (const v of items) if (v.barcode) barcodeIndex[v.barcode] = v.variant_id;
 
   return (
     <PosClient
