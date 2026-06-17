@@ -354,6 +354,45 @@ export async function assignInternalBarcode(variantId: string, productId: string
   return { ok: true, barcode, existed: false };
 }
 
+const IMAGE_BUCKET = "product-images";
+
+/** Upload a product photo to storage and set it as the product's image. */
+export async function uploadProductImage(productId: string, formData: FormData) {
+  if (!(await requireManager())) return { error: "Not authorized." };
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) return { error: "No image selected." };
+  if (file.size > 5_242_880) return { error: "Image must be under 5 MB." };
+  if (!file.type.startsWith("image/")) return { error: "Please choose an image file." };
+
+  const db = createAdminClient();
+  const ext = (file.name.split(".").pop() || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const path = `${productId}/${Date.now()}.${ext}`;
+  const { error: upErr } = await db.storage.from(IMAGE_BUCKET).upload(path, file, {
+    upsert: true,
+    contentType: file.type,
+    cacheControl: "31536000",
+  });
+  if (upErr) return { error: upErr.message };
+
+  const { data: pub } = db.storage.from(IMAGE_BUCKET).getPublicUrl(path);
+  const url = pub.publicUrl;
+  const { error } = await db.from("products").update({ image_url: url }).eq("id", productId);
+  if (error) return { error: error.message };
+
+  revalidatePath("/products");
+  return { ok: true as const, url };
+}
+
+/** Remove the product's photo (falls back to the placeholder). */
+export async function removeProductImage(productId: string) {
+  if (!(await requireManager())) return { error: "Not authorized." };
+  const db = createAdminClient();
+  const { error } = await db.from("products").update({ image_url: null }).eq("id", productId);
+  if (error) return { error: error.message };
+  revalidatePath("/products");
+  return { ok: true as const };
+}
+
 /** Bulk set the sale price on every variant of a product. */
 export async function bulkSetPrice(productId: string, salePrice: number) {
   if (!(await requireManager())) return { error: "Not authorized." };

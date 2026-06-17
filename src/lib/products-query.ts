@@ -32,6 +32,7 @@ export interface ProductRow {
   has_variants: boolean;
   is_variable_weight: boolean;
   active: boolean;
+  image_url: string | null;
   variants: VariantRow[];
   variant_count: number;
   on_hand: number;
@@ -161,6 +162,7 @@ export async function fetchProductsPage(supabase: SupabaseClient<any>, params: P
       has_variants: p.has_variants,
       is_variable_weight: p.is_variable_weight,
       active: p.active,
+      image_url: (p.image_url as string) ?? null,
       variants: vs,
       variant_count: vs.length,
       on_hand: vs.reduce((s, v) => s + v.on_hand, 0),

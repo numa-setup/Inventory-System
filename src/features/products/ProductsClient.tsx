@@ -22,6 +22,7 @@ import { createProduct, updateVariant, bulkSetPrice, searchProducts, type Produc
 import { PRODUCTS_PAGE_SIZE, type ProductRow, type VariantRow, type ProductsPage } from "@/lib/products-query";
 import { LabelDialog, type LabelTarget } from "./LabelDialog";
 import { ImportDrawer } from "./ImportDrawer";
+import { ImageUpload } from "./ImageUpload";
 
 export type { ProductRow, VariantRow };
 
@@ -215,6 +216,7 @@ export function ProductsClient({
                 sku: v.sku, sale_price: v.sale_price, barcode: v.barcode,
                 is_variable_weight: p.is_variable_weight,
               })}
+              onImageChanged={refreshList}
               onBulkPrice={async (price) => {
                 const res = await bulkSetPrice(p.id, price);
                 if (res?.error) return toast(res.error, "error");
@@ -263,7 +265,7 @@ export function ProductsClient({
 /* ---------------- Expandable product group ---------------- */
 
 function ProductGroup({
-  p, isOpen, onToggle, onEditVariant, onLabel, onBulkPrice,
+  p, isOpen, onToggle, onEditVariant, onLabel, onBulkPrice, onImageChanged,
 }: {
   p: ProductRow;
   isOpen: boolean;
@@ -271,6 +273,7 @@ function ProductGroup({
   onEditVariant: (v: VariantRow) => void;
   onLabel: (v: VariantRow) => void;
   onBulkPrice: (price: number) => void;
+  onImageChanged: () => void;
 }) {
   const [bulk, setBulk] = useState("");
   const price = p.price_min === p.price_max
@@ -284,8 +287,13 @@ function ProductGroup({
         className="grid w-full grid-cols-[1fr_auto] items-center gap-2 px-4 py-3 text-left transition-colors hover:bg-surface-2 sm:grid-cols-[1.6fr_1fr_0.8fr_0.9fr_0.7fr_2.2rem]"
       >
         <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-surface-2 text-text-tertiary">
-            <Package className="h-4 w-4" />
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-surface-2 text-text-tertiary">
+            {p.image_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={p.image_url} alt="" className="h-full w-full object-cover" />
+            ) : (
+              <Package className="h-4 w-4" />
+            )}
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-2">
@@ -312,6 +320,9 @@ function ProductGroup({
 
       {isOpen && (
         <div className="bg-surface-2/50 px-4 pb-4 pt-1">
+          <div className="pt-3">
+            <ImageUpload productId={p.id} current={p.image_url} onChanged={onImageChanged} />
+          </div>
           {/* bulk price */}
           <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2">
             <Tag className="h-3.5 w-3.5 text-text-tertiary" />
