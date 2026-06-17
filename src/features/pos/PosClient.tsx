@@ -1,10 +1,11 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Search, ShoppingCart, Plus, Minus, Trash2, X, Banknote,
   Loader2, Package, ScanLine, Camera, CheckCircle2, AlertTriangle, Tag, RotateCcw,
+  Keyboard, Pause, Clock, Play,
 } from "lucide-react";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
@@ -22,7 +23,7 @@ import { PaymentSheet } from "./PaymentSheet";
 import { Receipt } from "./Receipt";
 import { ReturnsSheet } from "./ReturnsSheet";
 import { checkoutSale, type PaymentInput } from "./actions";
-import type { ReceiptData } from "@/lib/receipt";
+import { printReceipt, type ReceiptData } from "@/lib/receipt";
 
 export interface StoreSettings {
   name: string;
@@ -36,6 +37,24 @@ export interface StoreSettings {
 }
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
+
+// ---- Hold / resume: parked carts persisted per-device in localStorage --------
+interface HeldSale {
+  id: string;
+  ts: number;
+  customerId: string;
+  discount: string;
+  lines: { p: PosProduct; qty: number }[];
+  lineDisc: [string, number][];
+}
+const HELD_KEY = "hgs-held-sales";
+function loadHeld(): HeldSale[] {
+  if (typeof localStorage === "undefined") return [];
+  try { return JSON.parse(localStorage.getItem(HELD_KEY) ?? "[]") as HeldSale[]; } catch { return []; }
+}
+function saveHeld(h: HeldSale[]) {
+  try { localStorage.setItem(HELD_KEY, JSON.stringify(h)); } catch { /* quota/full — ignore */ }
+}
 
 export interface PosProduct {
   variant_id: string;
@@ -104,6 +123,11 @@ export function PosClient({
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [returnsOpen, setReturnsOpen] = useState(false);
   const [receiptData, setReceiptData] = useState<ReceiptData | null>(null);
+  const [lastReceipt, setLastReceipt] = useState<ReceiptData | null>(null);
+  const [highlight, setHighlight] = useState(0);
+  const [held, setHeld] = useState<HeldSale[]>([]);
+  const [heldOpen, setHeldOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const idemKey = useRef("");
   const [cameraOpen, setCameraOpen] = useState(false);
   const [lastScan, setLastScan] = useState<{ ok: boolean; text: string } | null>(null);
@@ -130,6 +154,12 @@ export function PosClient({
       return p.name.toLowerCase().includes(t) || p.label.toLowerCase().includes(t) || p.sku.toLowerCase().includes(t) || (p.barcode ?? "").includes(t);
     });
   }, [products, q, cat]);
+
+  // keep the keyboard highlight within the (re-filtered) grid
+  useEffect(() => { setHighlight((h) => Math.min(h, Math.max(0, filtered.length - 1))); }, [filtered.length]);
+
+  // load parked carts (this device) once
+  useEffect(() => { setHeld(loadHeld()); }, []);
 
   function add(p: PosProduct, delta = 1) {
     setCart((c) => {
@@ -194,7 +224,9 @@ export function PosClient({
   function onScan(e: React.KeyboardEvent) {
     if (e.key !== "Enter") return;
     e.preventDefault();
-    if (q.trim()) handleScan(q);
+    if (q.trim()) { handleScan(q); return; }
+    const p = filtered[highlight]; // Enter on an empty box adds the highlighted card
+    if (p && p.available > 0) { add(p); flash(true, `Added ${p.name}`); }
   }
 
   // Own scans while POS is open (the global scan-anywhere sheet is suppressed).
@@ -247,7 +279,7 @@ export function PosClient({
     if ("error" in res) return toast(res.error, "error");
 
     const cust = customers.find((c) => c.id === customerId) ?? null;
-    setReceiptData({
+    const receipt: ReceiptData = {
       store: {
         name: store.name, address: store.address, phone: store.phone, logo_url: store.logo_url,
         header: store.receipt_header, footer: store.receipt_footer, ntn: store.ntn,
@@ -259,7 +291,9 @@ export function PosClient({
       items: cartLines.map((l) => ({ name: l.p.name, label: l.p.label || undefined, qty: l.qty, unit_price: l.p.price, line_total: round2(l.p.price * l.qty) })),
       subtotal: res.subtotal, discount: res.discount, tax: res.tax, tax_percent: store.tax_percent, total: res.total,
       payments, change,
-    });
+    };
+    setReceiptData(receipt);
+    setLastReceipt(receipt); // kept for F6 (print last receipt) after this closes
     setPaymentOpen(false);
     setCart(new Map()); setLineDisc(new Map()); setDiscount("");
     void ensureCatalog({ force: true }); // reconcile stock after the deduction
@@ -271,6 +305,78 @@ export function PosClient({
     setCustomerId("");
     searchRef.current?.focus();
   }
+
+  // ---- Hold / resume ----
+  function holdSale() {
+    if (!lines.length) return toast("Cart is empty", "error");
+    const entry: HeldSale = {
+      id: crypto.randomUUID?.() ?? `${Date.now()}`,
+      ts: Date.now(),
+      customerId,
+      discount,
+      lines: lines.map((l) => ({ p: l.p, qty: l.qty })),
+      lineDisc: [...lineDisc.entries()],
+    };
+    const next = [entry, ...held];
+    setHeld(next); saveHeld(next);
+    setCart(new Map()); setLineDisc(new Map()); setDiscount(""); setCustomerId("");
+    toast("Sale held");
+    searchRef.current?.focus();
+  }
+  function resumeSale(id: string) {
+    const entry = held.find((h) => h.id === id);
+    if (!entry) return;
+    let next = held.filter((h) => h.id !== id);
+    // park the current cart first (if any) so nothing is lost
+    if (cart.size) {
+      next = [{
+        id: crypto.randomUUID?.() ?? `${Date.now()}`,
+        ts: Date.now(), customerId, discount,
+        lines: lines.map((l) => ({ p: l.p, qty: l.qty })),
+        lineDisc: [...lineDisc.entries()],
+      }, ...next];
+    }
+    setHeld(next); saveHeld(next);
+    setCart(new Map(entry.lines.map((l) => [l.p.variant_id, l])));
+    setLineDisc(new Map(entry.lineDisc));
+    setDiscount(entry.discount);
+    setCustomerId(entry.customerId);
+    setHeldOpen(false);
+    searchRef.current?.focus();
+  }
+  function deleteHeld(id: string) {
+    const next = held.filter((h) => h.id !== id);
+    setHeld(next); saveHeld(next);
+  }
+
+  // ---- Keyboard shortcuts (full keyboard-only billing) ----
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const t = e.target as HTMLElement | null;
+      const inField = !!t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable);
+      const anyModal = paymentOpen || returnsOpen || cameraOpen || !!receiptData;
+
+      switch (e.key) {
+        case "F2": e.preventDefault(); searchRef.current?.focus(); return;
+        case "F4": e.preventDefault(); if (!anyModal && cart.size) openPayment(); return;
+        case "F6": e.preventDefault(); if (lastReceipt) printReceipt(lastReceipt); return;
+        case "Escape":
+          if (shortcutsOpen) return setShortcutsOpen(false);
+          if (heldOpen) return setHeldOpen(false);
+          if (!anyModal && cart.size) { setCart(new Map()); setLineDisc(new Map()); setDiscount(""); flash(false, "Sale cleared"); }
+          return;
+      }
+      if (anyModal) return;
+      if (e.key === "?" && !inField) { e.preventDefault(); setShortcutsOpen((s) => !s); return; }
+      if (e.key === "ArrowDown" || e.key === "ArrowRight") { e.preventDefault(); setHighlight((h) => Math.min(h + 1, filtered.length - 1)); return; }
+      if (e.key === "ArrowUp" || e.key === "ArrowLeft") { e.preventDefault(); setHighlight((h) => Math.max(h - 1, 0)); return; }
+      if ((e.key === "+" || e.key === "=") && (!inField || q === "")) { e.preventDefault(); const p = filtered[highlight]; if (p && p.available > 0) add(p, 1); return; }
+      if ((e.key === "-" || e.key === "_") && (!inField || q === "")) { e.preventDefault(); const p = filtered[highlight]; if (p) add(p, -1); return; }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paymentOpen, returnsOpen, cameraOpen, receiptData, shortcutsOpen, heldOpen, cart, q, filtered, highlight, lastReceipt]);
 
   return (
     <div className="grid h-[calc(100vh-7rem)] grid-cols-1 gap-4 lg:grid-cols-[1fr_360px]">
@@ -298,6 +404,25 @@ export function PosClient({
           >
             <RotateCcw className="h-5 w-5" />
           </button>
+          <button
+            type="button"
+            onClick={() => setHeldOpen((o) => !o)}
+            title="Held sales"
+            className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-border bg-surface text-text-secondary transition-colors hover:bg-surface-2"
+          >
+            <Clock className="h-5 w-5" />
+            {held.length > 0 && (
+              <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-brand-500 px-1 text-[10px] font-bold text-white">{held.length}</span>
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={() => setShortcutsOpen(true)}
+            title="Keyboard shortcuts (?)"
+            className="hidden h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-border bg-surface text-text-secondary transition-colors hover:bg-surface-2 lg:flex"
+          >
+            <Keyboard className="h-5 w-5" />
+          </button>
         </div>
 
         {/* per-scan confirmation / warning */}
@@ -324,15 +449,17 @@ export function PosClient({
             <div className="flex h-40 items-center justify-center text-sm text-text-tertiary">No products match.</div>
           ) : (
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
-              {filtered.map((p) => {
+              {filtered.map((p, i) => {
                 const inCart = cart.get(p.variant_id)?.qty ?? 0;
                 const out = p.available <= 0;
+                const isHighlight = i === highlight;
                 return (
                   <div key={p.variant_id}
                     className={cn("group relative flex flex-col rounded-2xl border bg-surface p-3 text-left shadow-card transition-all",
                       out ? "border-border opacity-60" : "border-border hover:-translate-y-0.5 hover:shadow-drawer",
-                      inCart > 0 && "ring-2 ring-brand-500")}>
-                    <button disabled={out} onClick={() => add(p)} className="flex flex-1 flex-col text-left disabled:cursor-not-allowed">
+                      inCart > 0 && "ring-2 ring-brand-500",
+                      isHighlight && inCart === 0 && "ring-2 ring-brand-300")}>
+                    <button disabled={out} onClick={() => { setHighlight(i); add(p); }} className="flex flex-1 flex-col text-left disabled:cursor-not-allowed">
                       <div className="mb-2 flex h-20 items-center justify-center rounded-xl bg-surface-2 text-text-tertiary">
                         <Package className="h-7 w-7" />
                       </div>
@@ -364,7 +491,7 @@ export function PosClient({
           lines={lines} subtotal={subtotal} discount={discount} setDiscount={setDiscount} total={total} tax={tax} taxPercent={store.tax_percent}
           lineDisc={lineDisc} setLineDiscount={setLineDiscount} belowCost={belowCost}
           customers={customers} customerId={customerId} setCustomerId={setCustomerId}
-          setQty={setQty} remove={(id) => setQty(id, 0)} processing={processing} onCharge={openPayment}
+          setQty={setQty} remove={(id) => setQty(id, 0)} processing={processing} onCharge={openPayment} onHold={holdSale}
         />
       </div>
 
@@ -390,7 +517,7 @@ export function PosClient({
               lines={lines} subtotal={subtotal} discount={discount} setDiscount={setDiscount} total={total} tax={tax} taxPercent={store.tax_percent}
               lineDisc={lineDisc} setLineDiscount={setLineDiscount} belowCost={belowCost}
               customers={customers} customerId={customerId} setCustomerId={setCustomerId}
-              setQty={setQty} remove={(id) => setQty(id, 0)} processing={processing} onCharge={openPayment} embedded
+              setQty={setQty} remove={(id) => setQty(id, 0)} processing={processing} onCharge={openPayment} onHold={holdSale} embedded
             />
           </div>
         </div>
@@ -422,6 +549,66 @@ export function PosClient({
       />
 
       <ReturnsSheet open={returnsOpen} onClose={() => setReturnsOpen(false)} />
+
+      {heldOpen && (
+        <div className="fixed inset-0 z-[60] flex items-end justify-center sm:items-center">
+          <div className="absolute inset-0 bg-black/45 animate-fade-in" onClick={() => setHeldOpen(false)} />
+          <div className="relative z-10 flex max-h-[80vh] w-full max-w-md flex-col overflow-hidden rounded-t-2xl bg-surface shadow-drawer animate-fade-in sm:rounded-2xl">
+            <div className="flex items-center justify-between border-b border-border px-4 py-3">
+              <span className="flex items-center gap-2 font-heading text-lg font-semibold text-text-primary"><Clock className="h-5 w-5" /> Held sales</span>
+              <button onClick={() => setHeldOpen(false)} className="rounded-lg p-1.5 text-text-tertiary hover:bg-surface-2"><X className="h-5 w-5" /></button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto p-2 scrollbar-thin">
+              {held.length === 0 ? (
+                <div className="flex h-32 items-center justify-center text-sm text-text-tertiary">No held sales</div>
+              ) : held.map((h) => {
+                const count = h.lines.reduce((s, l) => s + l.qty, 0);
+                const amt = h.lines.reduce((s, l) => s + l.p.price * l.qty, 0);
+                const cust = customers.find((c) => c.id === h.customerId);
+                return (
+                  <div key={h.id} className="flex items-center gap-2 rounded-xl border border-border p-3 mb-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-medium text-text-primary">{count} item{count !== 1 ? "s" : ""} · {formatPKR(amt)}</div>
+                      <div className="text-xs text-text-tertiary">{cust ? `${cust.name} · ` : ""}{new Date(h.ts).toLocaleTimeString("en-PK", { hour: "2-digit", minute: "2-digit" })}</div>
+                    </div>
+                    <Button size="sm" onClick={() => resumeSale(h.id)}><Play className="h-4 w-4" /> Resume</Button>
+                    <button onClick={() => deleteHeld(h.id)} className="rounded-md p-2 text-text-tertiary hover:text-coral-text"><Trash2 className="h-4 w-4" /></button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {shortcutsOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center" onClick={() => setShortcutsOpen(false)}>
+          <div className="absolute inset-0 bg-black/45 animate-fade-in" />
+          <div className="relative z-10 w-full max-w-sm rounded-2xl bg-surface p-5 shadow-drawer animate-fade-in" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 flex items-center justify-between">
+              <span className="flex items-center gap-2 font-heading text-lg font-semibold text-text-primary"><Keyboard className="h-5 w-5" /> Shortcuts</span>
+              <button onClick={() => setShortcutsOpen(false)} className="rounded-lg p-1.5 text-text-tertiary hover:bg-surface-2"><X className="h-5 w-5" /></button>
+            </div>
+            <dl className="space-y-2 text-sm">
+              {[
+                ["F2", "Focus product search"],
+                ["F4", "Checkout (charge)"],
+                ["F6", "Print last receipt"],
+                ["Esc", "Clear current sale"],
+                ["↑ ↓ ← →", "Move highlight"],
+                ["Enter", "Add highlighted item"],
+                ["+ / −", "Change its quantity"],
+                ["?", "This help"],
+              ].map(([k, d]) => (
+                <div key={k} className="flex items-center justify-between gap-3">
+                  <span className="text-text-secondary">{d}</span>
+                  <kbd className="rounded-md border border-border bg-surface-2 px-2 py-0.5 font-mono text-xs text-text-primary">{k}</kbd>
+                </div>
+              ))}
+            </dl>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -438,7 +625,7 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
 
 function CartPanel({
   lines, subtotal, discount, setDiscount, total, tax, taxPercent, lineDisc, setLineDiscount, belowCost,
-  customers, customerId, setCustomerId, setQty, remove, processing, onCharge, embedded,
+  customers, customerId, setCustomerId, setQty, remove, processing, onCharge, onHold, embedded,
 }: {
   lines: { p: PosProduct; qty: number }[];
   subtotal: number; discount: string; setDiscount: (v: string) => void; total: number;
@@ -447,7 +634,7 @@ function CartPanel({
   customers: { id: string; name: string; phone: string | null }[];
   customerId: string; setCustomerId: (v: string) => void;
   setQty: (id: string, qty: number) => void; remove: (id: string) => void;
-  processing: boolean; onCharge: () => void; embedded?: boolean;
+  processing: boolean; onCharge: () => void; onHold: () => void; embedded?: boolean;
 }) {
   return (
     <div className={cn("flex flex-col rounded-2xl border border-border bg-surface", embedded ? "max-h-[72vh]" : "h-full")}>
@@ -521,9 +708,14 @@ function CartPanel({
             <AlertTriangle className="h-3.5 w-3.5 shrink-0" /> A discounted item is priced below its cost.
           </div>
         )}
-        <Button onClick={onCharge} disabled={processing || !lines.length} className="w-full py-3 text-base">
-          {processing ? <Loader2 className="h-5 w-5 animate-spin" /> : <Banknote className="h-5 w-5" />} Charge {formatPKR(total)}
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="secondary" onClick={onHold} disabled={processing || !lines.length} className="shrink-0 px-4 py-3" title="Hold sale (park)">
+            <Pause className="h-5 w-5" /> Hold
+          </Button>
+          <Button onClick={onCharge} disabled={processing || !lines.length} className="flex-1 py-3 text-base">
+            {processing ? <Loader2 className="h-5 w-5 animate-spin" /> : <Banknote className="h-5 w-5" />} Charge {formatPKR(total)}
+          </Button>
+        </div>
       </div>
     </div>
   );
