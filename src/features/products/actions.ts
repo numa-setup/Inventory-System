@@ -2,7 +2,19 @@
 
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser } from "@/lib/auth";
+import { fetchProductsPage, type ProductsQuery, type ProductsPage } from "@/lib/products-query";
+
+/**
+ * Server-side paginated + filtered product search. Powers the Products list's
+ * debounced search and "load more" — only one page (+ its related rows) crosses
+ * the wire, never the whole table.
+ */
+export async function searchProducts(params: ProductsQuery): Promise<ProductsPage> {
+  const supabase = await createClient();
+  return fetchProductsPage(supabase, params);
+}
 
 function slugify(s: string) {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");

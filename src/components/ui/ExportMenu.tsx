@@ -23,15 +23,18 @@ function download(content: string, filename: string, mime: string) {
  * No external deps — Excel is an HTML-table workbook, PDF uses the print dialog.
  */
 export function ExportMenu({
-  filename, columns, rows, title, summary,
+  filename, columns, rows, title, summary, fetchRows,
 }: {
   filename: string;
   columns: ExportColumn[];
   rows: Record<string, unknown>[];
   title?: string;
   summary?: { label: string; value: string }[];
+  /** When set (e.g. paginated lists), called on export to fetch the full set. */
+  fetchRows?: () => Promise<Record<string, unknown>[]>;
 }) {
   const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -42,28 +45,37 @@ export function ExportMenu({
     return () => document.removeEventListener("mousedown", onClick);
   }, []);
 
-  function toCSV() {
+  async function resolveRows() {
+    if (!fetchRows) return rows;
+    setBusy(true);
+    try { return await fetchRows(); } finally { setBusy(false); }
+  }
+
+  async function toCSV() {
+    const data = await resolveRows();
     const head = columns.map((c) => esc(c.header)).join(",");
-    const body = rows.map((r) => columns.map((c) => esc(r[c.key])).join(",")).join("\n");
+    const body = data.map((r) => columns.map((c) => esc(r[c.key])).join(",")).join("\n");
     download(`${head}\n${body}`, `${filename}.csv`, "text/csv;charset=utf-8");
     setOpen(false);
   }
 
-  function tableHTML() {
+  function tableHTML(data: Record<string, unknown>[]) {
     const head = `<tr>${columns.map((c) => `<th style="background:#f1f3f7;text-align:left;padding:6px;border:1px solid #ccc">${c.header}</th>`).join("")}</tr>`;
-    const body = rows.map((r) =>
+    const body = data.map((r) =>
       `<tr>${columns.map((c) => `<td style="padding:6px;border:1px solid #ddd">${r[c.key] ?? ""}</td>`).join("")}</tr>`,
     ).join("");
     return `<table style="border-collapse:collapse;font-family:Arial;font-size:12px">${head}${body}</table>`;
   }
 
-  function toExcel() {
-    const html = `<html><head><meta charset="utf-8"></head><body>${title ? `<h3>${title}</h3>` : ""}${tableHTML()}</body></html>`;
+  async function toExcel() {
+    const data = await resolveRows();
+    const html = `<html><head><meta charset="utf-8"></head><body>${title ? `<h3>${title}</h3>` : ""}${tableHTML(data)}</body></html>`;
     download(html, `${filename}.xls`, "application/vnd.ms-excel");
     setOpen(false);
   }
 
-  function toPDF() {
+  async function toPDF() {
+    const data = await resolveRows();
     const w = window.open("", "_blank", "width=900,height=700");
     if (!w) return;
     const kpis = summary?.length
@@ -74,7 +86,7 @@ export function ExportMenu({
       <body style="font-family:Arial;padding:24px;color:#101828">
         <h2 style="margin:0">${title ?? "Report"}</h2>
         <p style="color:#667085;font-size:12px">Hamza General Store · generated ${new Date().toLocaleString("en-PK")}</p>
-        ${kpis}${tableHTML()}
+        ${kpis}${tableHTML(data)}
         <script>window.onload=function(){window.print();}</script>
       </body></html>`);
     w.document.close();
@@ -83,8 +95,8 @@ export function ExportMenu({
 
   return (
     <div className="relative" ref={ref}>
-      <Button variant="secondary" size="sm" onClick={() => setOpen((o) => !o)}>
-        <Download className="h-4 w-4" /> Export <ChevronDown className="h-3.5 w-3.5" />
+      <Button variant="secondary" size="sm" disabled={busy} onClick={() => setOpen((o) => !o)}>
+        <Download className="h-4 w-4" /> {busy ? "Exporting…" : "Export"} <ChevronDown className="h-3.5 w-3.5" />
       </Button>
       {open && (
         <div className="absolute right-0 z-30 mt-1 w-48 overflow-hidden rounded-lg border border-border bg-surface shadow-drawer">

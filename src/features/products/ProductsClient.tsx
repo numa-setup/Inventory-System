@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Plus, Search, Package, Loader2, Barcode, ChevronRight, ChevronDown,
   Pencil, Wand2, Layers, Tag,
@@ -17,43 +18,10 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { useToast } from "@/components/ui/Toast";
 import { ExportMenu } from "@/components/ui/ExportMenu";
 import { cn, formatPKR } from "@/lib/utils";
-import { createProduct, updateVariant, bulkSetPrice, type ProductInput, type VariantInput } from "./actions";
+import { createProduct, updateVariant, bulkSetPrice, searchProducts, type ProductInput, type VariantInput } from "./actions";
+import { PRODUCTS_PAGE_SIZE, type ProductRow, type VariantRow, type ProductsPage } from "@/lib/products-query";
 
-export interface VariantRow {
-  id: string;
-  product_id: string;
-  sku: string;
-  label: string;
-  cost: number;
-  sale_price: number;
-  reorder_point: number;
-  is_default: boolean;
-  active: boolean;
-  barcode: string | null;
-  on_hand: number;
-  available: number;
-  avg_cost: number;
-}
-
-export interface ProductRow {
-  id: string;
-  sku: string;
-  name: string;
-  brand: string | null;
-  category_id: string | null;
-  category: string;
-  base_unit: string;
-  has_variants: boolean;
-  active: boolean;
-  variants: VariantRow[];
-  variant_count: number;
-  on_hand: number;
-  stock_value: number;
-  price_min: number;
-  price_max: number;
-  low: boolean;
-  out: boolean;
-}
+export type { ProductRow, VariantRow };
 
 type CatOption = { id: string; name: string; isParent: boolean };
 
@@ -69,19 +37,55 @@ function productStatus(p: ProductRow) {
 }
 
 export function ProductsClient({
-  rows,
+  initialPage,
   categories,
 }: {
-  rows: ProductRow[];
+  initialPage: ProductsPage;
   categories: CatOption[];
 }) {
   const router = useRouter();
   const toast = useToast();
+  const queryClient = useQueryClient();
   const [q, setQ] = useState("");
+  const [debouncedQ, setDebouncedQ] = useState("");
   const [cat, setCat] = useState("");
   const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [editVariant, setEditVariant] = useState<VariantRow | null>(null);
+
+  // Debounce the search box so we hit the server (indexed columns) at most
+  // ~4×/sec while typing instead of on every keystroke.
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQ(q.trim()), 250);
+    return () => clearTimeout(t);
+  }, [q]);
+
+  const isDefaultView = debouncedQ === "" && cat === "";
+
+  const {
+    data, fetchNextPage, hasNextPage, isFetching, isFetchingNextPage, isLoading,
+  } = useInfiniteQuery({
+    queryKey: ["products", debouncedQ, cat],
+    initialPageParam: 0,
+    queryFn: ({ pageParam }) =>
+      searchProducts({
+        q: debouncedQ || undefined,
+        categoryId: cat || undefined,
+        offset: pageParam as number,
+        limit: PRODUCTS_PAGE_SIZE,
+      }),
+    getNextPageParam: (last) => {
+      const loaded = last.offset + last.rows.length;
+      return loaded < last.total ? loaded : undefined;
+    },
+    // Seed the default (unfiltered) view from the server-rendered first page so
+    // first paint is instant and we don't refetch on mount.
+    initialData: isDefaultView ? { pages: [initialPage], pageParams: [0] } : undefined,
+    staleTime: 10_000,
+  });
+
+  const filtered = useMemo(() => data?.pages.flatMap((p) => p.rows) ?? initialPage.rows, [data, initialPage.rows]);
+  const total = data?.pages[0]?.total ?? initialPage.total;
 
   const toggle = (id: string) =>
     setExpanded((s) => {
@@ -90,26 +94,43 @@ export function ProductsClient({
       return next;
     });
 
-  const filtered = useMemo(() => {
-    const term = q.trim().toLowerCase();
-    return rows.filter((r) => {
-      if (cat && r.category_id !== cat) return false;
-      if (!term) return true;
-      return (
-        r.name.toLowerCase().includes(term) ||
-        (r.brand ?? "").toLowerCase().includes(term) ||
-        r.variants.some((v) => v.sku.toLowerCase().includes(term) || (v.barcode ?? "").includes(term))
-      );
-    });
-  }, [rows, q, cat]);
+  const refreshList = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ["products"] });
+    router.refresh();
+  }, [queryClient, router]);
 
-  const totalVariants = rows.reduce((s, r) => s + r.variant_count, 0);
+  // Infinite scroll: load the next page when the sentinel scrolls into view.
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || !hasNextPage) return;
+    const io = new IntersectionObserver(
+      (entries) => { if (entries[0].isIntersecting && !isFetchingNextPage) fetchNextPage(); },
+      { rootMargin: "300px" },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+
+  // Export reflects the full filtered set, not just the loaded pages.
+  const fetchExportRows = useCallback(async () => {
+    const page = await searchProducts({
+      q: debouncedQ || undefined, categoryId: cat || undefined, offset: 0, limit: 10_000,
+    });
+    return page.rows.flatMap((p) =>
+      p.variants.map((v) => ({
+        product: p.name, brand: p.brand ?? "", category: p.category, variant: v.label,
+        sku: v.sku, barcode: v.barcode ?? "", cost: Math.round(v.avg_cost || v.cost),
+        price: v.sale_price, on_hand: v.on_hand,
+      })),
+    );
+  }, [debouncedQ, cat]);
 
   return (
     <div>
       <PageHeader
         title="Products"
-        subtitle={`${rows.length} products · ${totalVariants} variants`}
+        subtitle={`${total} product${total === 1 ? "" : "s"}${isDefaultView ? "" : " match"}`}
         actions={
           <div className="flex gap-2">
             <ExportMenu
@@ -122,11 +143,8 @@ export function ProductsClient({
                 { key: "cost", header: "Avg cost" }, { key: "price", header: "Price" },
                 { key: "on_hand", header: "On hand" },
               ]}
-              rows={filtered.flatMap((p) => p.variants.map((v) => ({
-                product: p.name, brand: p.brand ?? "", category: p.category, variant: v.label,
-                sku: v.sku, barcode: v.barcode ?? "", cost: Math.round(v.avg_cost || v.cost),
-                price: v.sale_price, on_hand: v.on_hand,
-              })))}
+              rows={[]}
+              fetchRows={fetchExportRows}
             />
             <Button onClick={() => setOpen(true)}>
               <Plus className="h-4 w-4" /> Add Product
@@ -153,7 +171,11 @@ export function ProductsClient({
         </Select>
       </Card>
 
-      {filtered.length === 0 ? (
+      {isLoading ? (
+        <Card className="flex items-center justify-center py-16 text-sm text-text-tertiary">
+          <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading products…
+        </Card>
+      ) : filtered.length === 0 ? (
         <Card>
           <EmptyState
             icon={Package}
@@ -163,7 +185,7 @@ export function ProductsClient({
           />
         </Card>
       ) : (
-        <Card className="overflow-hidden">
+        <Card className={cn("overflow-hidden transition-opacity", isFetching && !isFetchingNextPage && "opacity-60")}>
           {/* header */}
           <div className="hidden border-b border-border bg-surface-2 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-text-tertiary sm:grid sm:grid-cols-[1.6fr_1fr_0.8fr_0.9fr_0.7fr_2.2rem]">
             <span>Product</span>
@@ -184,10 +206,18 @@ export function ProductsClient({
                 const res = await bulkSetPrice(p.id, price);
                 if (res?.error) return toast(res.error, "error");
                 toast("Prices updated for all variants");
-                router.refresh();
+                refreshList();
               }}
             />
           ))}
+          {/* infinite-scroll sentinel + manual fallback */}
+          {hasNextPage && (
+            <div ref={sentinelRef} className="flex justify-center p-4">
+              <Button variant="secondary" size="sm" onClick={() => fetchNextPage()} disabled={isFetchingNextPage}>
+                {isFetchingNextPage && <Loader2 className="h-4 w-4 animate-spin" />} Load more
+              </Button>
+            </div>
+          )}
         </Card>
       )}
 
@@ -195,14 +225,14 @@ export function ProductsClient({
         open={open}
         onClose={() => setOpen(false)}
         categories={categories}
-        onSaved={() => { setOpen(false); toast("Product added"); router.refresh(); }}
+        onSaved={() => { setOpen(false); toast("Product added"); refreshList(); }}
         onError={(m) => toast(m, "error")}
       />
 
       <VariantEditDrawer
         variant={editVariant}
         onClose={() => setEditVariant(null)}
-        onSaved={() => { setEditVariant(null); toast("Variant updated"); router.refresh(); }}
+        onSaved={() => { setEditVariant(null); toast("Variant updated"); refreshList(); }}
         onError={(m) => toast(m, "error")}
       />
     </div>

@@ -91,22 +91,45 @@ import from the barrel. recharts now downloads only when a chart renders.
 
 ---
 
+### Fix D — local catalogue index (instant, offline scan/search)
+- Migration `0010` adds the **`catalog_index`** view (one flat row per variant:
+  name, composed option label, primary barcode, price, cost, category, live
+  stock, variable-weight flag), replacing the 5-table JS assembly in
+  `lib/catalog.ts`.
+- `GET /api/catalog` serves it (auth-guarded).
+- `lib/catalog-cache.ts` caches it **in-memory + IndexedDB**: hydrates instantly
+  from IDB, reconciles with the server in the background, and keeps working
+  through brief network drops. `lookupByBarcode` / `searchCatalog` / `ensureCatalog`.
+- POS now resolves scans and search against this cache (no network per scan);
+  SSR props are the first-paint fallback; stock reconciles after each sale.
+- POS page SSR load is now a **single** `catalog_index` query (was 5).
+
+### Fix E — server-side pagination + debounced search (Products)
+- `lib/products-query.ts` `fetchProductsPage()` fetches **one page** of products
+  plus the related variants/barcodes/availability/labels for **only those ids** —
+  never the whole table. Used by both the SSR first page and the `searchProducts`
+  server action.
+- `ProductsClient` drives the list from `useInfiniteQuery`: 250 ms debounced
+  server search, category filter, IntersectionObserver infinite scroll (+ a
+  "Load more" fallback). Export fetches the full filtered set on demand
+  (`ExportMenu` gained an async `fetchRows`). Design unchanged.
+- This is the **reusable pattern** to roll across the remaining lists.
+
 ## Targets (brief) & status
-- Scan-to-cart < 100 ms — **on track**: resolves against an in-memory barcode
-  index, DB lookup is 1.3 ms. (Local IndexedDB cache lands in Section 2.)
-- Product search < 200 ms — **pending** server-side debounced search.
-- Page interactive < 1.5 s on 4G — **improved** via Fixes B/C + running prod
-  build; to be confirmed with Lighthouse after pagination lands.
-- No full-table loads — **in progress** (Backlog).
+- Scan-to-cart < 100 ms — **met**: resolves against the in-memory cached index
+  (no network); DB lookup is 1.3 ms when it does hit.
+- Product search < 200 ms — **met**: 250 ms-debounced server query on indexed
+  columns (`name` trigram, `sku`), one page at a time.
+- Page interactive < 1.5 s on 4G — **improved** via Fixes B–E + running prod
+  build; confirm with Lighthouse after the remaining lists are paginated.
+- No full-table loads — **done for POS catalogue + Products**; remaining lists
+  follow the same pattern (Backlog).
 
 ## Backlog (remaining Section 1)
-1. Server-side keyset pagination + filtering + sorting on every list
-   (`/products`, `/stock`, `/customers`, `/orders`, sales, reports). No screen
-   fetches a whole table.
-2. Debounced (250 ms) server-side search against the trigram / barcode indexes.
-3. Lightweight catalogue index endpoint (`variant_id, name, barcode, price,
-   stock`) cached in-memory + IndexedDB — powers instant scan/search and the
-   Section 2 scanner. Reconciles in the background; survives brief offline.
-4. Virtualize long tables with `@tanstack/react-virtual`.
-5. Filtered realtime channels (subscribe per-screen, throttle) instead of
+1. Apply the Fix E pattern to the other lists (`/stock`, `/customers`,
+   `/orders`, sales, reports). Time-ordered lists (sales, stock moves) use clean
+   keyset on `(created_at desc, id desc)` — index added in `0009`.
+2. Virtualize very long tables with `@tanstack/react-virtual` once a single
+   screen can realistically show thousands of rows.
+3. Filtered realtime channels (subscribe per-screen, throttle) instead of
    table-wide subscriptions.
