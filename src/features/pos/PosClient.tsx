@@ -3,8 +3,8 @@
 import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Search, ShoppingCart, Plus, Minus, Trash2, X, Banknote, NotebookPen,
-  CreditCard, Loader2, Package, ScanLine, Camera, CheckCircle2, AlertTriangle,
+  Search, ShoppingCart, Plus, Minus, Trash2, X, Banknote,
+  Loader2, Package, ScanLine, Camera, CheckCircle2, AlertTriangle,
 } from "lucide-react";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
@@ -18,7 +18,23 @@ import { useScanHandler } from "@/components/scan/ScanProvider";
 import { parseScan } from "@/lib/barcode";
 import { beepOk, beepError } from "@/lib/sound";
 import { CameraScanner } from "@/components/scan/CameraScannerLazy";
-import { checkoutSale } from "./actions";
+import { PaymentSheet } from "./PaymentSheet";
+import { Receipt } from "./Receipt";
+import { checkoutSale, type PaymentInput } from "./actions";
+import type { ReceiptData } from "@/lib/receipt";
+
+export interface StoreSettings {
+  name: string;
+  address?: string;
+  phone?: string;
+  ntn?: string;
+  logo_url?: string;
+  receipt_header?: string;
+  receipt_footer?: string;
+  tax_percent: number;
+}
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
 
 export interface PosProduct {
   variant_id: string;
@@ -32,7 +48,6 @@ export interface PosProduct {
   category_id: string | null;
 }
 
-type Pay = "CASH" | "UDHAAR" | "CARD";
 function tone(p: PosProduct) { return p.available <= 0 ? "out_of_stock" : p.available <= 5 ? "low_stock" : "in_stock"; }
 
 function toPos(it: CatalogItem): PosProduct {
@@ -50,12 +65,14 @@ function toPos(it: CatalogItem): PosProduct {
 }
 
 export function PosClient({
-  products: initialProducts, categories, barcodeIndex: initialBarcodeIndex, customers,
+  products: initialProducts, categories, barcodeIndex: initialBarcodeIndex, customers, store, cashierName,
 }: {
   products: PosProduct[];
   categories: { id: string; name: string }[];
   barcodeIndex: Record<string, string>;
   customers: { id: string; name: string; phone: string | null }[];
+  store: StoreSettings;
+  cashierName: string;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -80,6 +97,9 @@ export function PosClient({
   const [discount, setDiscount] = useState("");
   const [processing, setProcessing] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [paymentOpen, setPaymentOpen] = useState(false);
+  const [receiptData, setReceiptData] = useState<ReceiptData | null>(null);
+  const idemKey = useRef("");
   const [cameraOpen, setCameraOpen] = useState(false);
   const [lastScan, setLastScan] = useState<{ ok: boolean; text: string } | null>(null);
   const scanTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -179,24 +199,53 @@ export function PosClient({
   const lines = [...cart.values()];
   const subtotal = lines.reduce((s, l) => s + l.p.price * l.qty, 0);
   const disc = Number(discount) || 0;
-  const total = Math.max(subtotal - disc, 0);
+  const taxable = Math.max(subtotal - disc, 0);
+  const tax = Math.round(taxable * store.tax_percent) / 100;
+  const total = round2(taxable + tax);
   const count = lines.reduce((s, l) => s + l.qty, 0);
 
-  async function checkout(method: Pay) {
+  function openPayment() {
     if (!lines.length) return toast("Cart is empty", "error");
-    if (method === "UDHAAR" && !customerId) return toast("Pick a customer for udhaar", "error");
+    idemKey.current = crypto.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
+    setSheetOpen(false);
+    setPaymentOpen(true);
+  }
+
+  async function checkout(payments: PaymentInput[], change: number) {
+    if (!lines.length) return;
     setProcessing(true);
+    const cartLines = lines; // snapshot for the receipt before we clear
     const res = await checkoutSale({
-      lines: lines.map((l) => ({ variant_id: l.p.variant_id, product_id: l.p.product_id, qty: l.qty, unit_price: l.p.price })),
-      customer_id: customerId || null, payment_method: method, discount: disc,
-      idempotency_key: (crypto.randomUUID?.() ?? `${Date.now()}-${Math.random()}`),
+      lines: cartLines.map((l) => ({ variant_id: l.p.variant_id, product_id: l.p.product_id, qty: l.qty, unit_price: l.p.price })),
+      customer_id: customerId || null, payments, discount: disc,
+      idempotency_key: idemKey.current,
     });
     setProcessing(false);
-    if (res?.error) return toast(res.error, "error");
-    toast(`Sale complete · ${res.receipt_no ?? ""} · ${formatPKR(res.total ?? total)}`);
-    setCart(new Map()); setDiscount(""); setCustomerId(""); setSheetOpen(false);
+    if ("error" in res) return toast(res.error, "error");
+
+    const cust = customers.find((c) => c.id === customerId) ?? null;
+    setReceiptData({
+      store: {
+        name: store.name, address: store.address, phone: store.phone, logo_url: store.logo_url,
+        header: store.receipt_header, footer: store.receipt_footer, ntn: store.ntn,
+      },
+      receipt_no: res.receipt_no,
+      date: new Date().toLocaleString("en-PK", { dateStyle: "medium", timeStyle: "short" }),
+      cashier: cashierName,
+      customer: cust?.name ?? null,
+      items: cartLines.map((l) => ({ name: l.p.name, label: l.p.label || undefined, qty: l.qty, unit_price: l.p.price, line_total: round2(l.p.price * l.qty) })),
+      subtotal: res.subtotal, discount: res.discount, tax: res.tax, tax_percent: store.tax_percent, total: res.total,
+      payments, change,
+    });
+    setPaymentOpen(false);
+    setCart(new Map()); setDiscount("");
     void ensureCatalog({ force: true }); // reconcile stock after the deduction
     router.refresh();
+  }
+
+  function finishReceipt() {
+    setReceiptData(null);
+    setCustomerId("");
     searchRef.current?.focus();
   }
 
@@ -281,9 +330,9 @@ export function PosClient({
       {/* desktop cart */}
       <div className="hidden lg:block">
         <CartPanel
-          lines={lines} subtotal={subtotal} discount={discount} setDiscount={setDiscount} total={total}
+          lines={lines} subtotal={subtotal} discount={discount} setDiscount={setDiscount} total={total} tax={tax} taxPercent={store.tax_percent}
           customers={customers} customerId={customerId} setCustomerId={setCustomerId}
-          setQty={setQty} remove={(id) => setQty(id, 0)} processing={processing} checkout={checkout}
+          setQty={setQty} remove={(id) => setQty(id, 0)} processing={processing} onCharge={openPayment}
         />
       </div>
 
@@ -306,9 +355,9 @@ export function PosClient({
               <button onClick={() => setSheetOpen(false)} className="rounded-lg p-2 text-text-tertiary hover:bg-surface-2"><X className="h-5 w-5" /></button>
             </div>
             <CartPanel
-              lines={lines} subtotal={subtotal} discount={discount} setDiscount={setDiscount} total={total}
+              lines={lines} subtotal={subtotal} discount={discount} setDiscount={setDiscount} total={total} tax={tax} taxPercent={store.tax_percent}
               customers={customers} customerId={customerId} setCustomerId={setCustomerId}
-              setQty={setQty} remove={(id) => setQty(id, 0)} processing={processing} checkout={checkout} embedded
+              setQty={setQty} remove={(id) => setQty(id, 0)} processing={processing} onCharge={openPayment} embedded
             />
           </div>
         </div>
@@ -320,6 +369,23 @@ export function PosClient({
         onResult={(code) => handleScan(code)}
         continuous
         title="Scan to add to cart"
+      />
+
+      <PaymentSheet
+        open={paymentOpen}
+        total={total}
+        customers={customers}
+        customerId={customerId}
+        setCustomerId={setCustomerId}
+        onClose={() => setPaymentOpen(false)}
+        onConfirm={checkout}
+        processing={processing}
+      />
+
+      <Receipt
+        data={receiptData}
+        customerPhone={customers.find((c) => c.id === customerId)?.phone}
+        onClose={finishReceipt}
       />
     </div>
   );
@@ -336,15 +402,16 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
 }
 
 function CartPanel({
-  lines, subtotal, discount, setDiscount, total, customers, customerId, setCustomerId,
-  setQty, remove, processing, checkout, embedded,
+  lines, subtotal, discount, setDiscount, total, tax, taxPercent, customers, customerId, setCustomerId,
+  setQty, remove, processing, onCharge, embedded,
 }: {
   lines: { p: PosProduct; qty: number }[];
   subtotal: number; discount: string; setDiscount: (v: string) => void; total: number;
+  tax: number; taxPercent: number;
   customers: { id: string; name: string; phone: string | null }[];
   customerId: string; setCustomerId: (v: string) => void;
   setQty: (id: string, qty: number) => void; remove: (id: string) => void;
-  processing: boolean; checkout: (m: Pay) => void; embedded?: boolean;
+  processing: boolean; onCharge: () => void; embedded?: boolean;
 }) {
   return (
     <div className={cn("flex flex-col rounded-2xl border border-border bg-surface", embedded ? "max-h-[72vh]" : "h-full")}>
@@ -387,21 +454,18 @@ function CartPanel({
           <span className="text-text-secondary">Discount</span>
           <Input type="number" value={discount} onChange={(e) => setDiscount(e.target.value)} placeholder="0" className="h-8 w-28 text-right" />
         </div>
+        {tax > 0 && (
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-text-secondary">Tax ({taxPercent}%)</span><span className="tnum text-text-primary">{formatPKR(tax)}</span>
+          </div>
+        )}
         <div className="flex items-center justify-between border-t border-border pt-2">
           <span className="font-medium text-text-primary">Total</span>
           <span className="tnum font-heading text-xl font-bold text-text-primary">{formatPKR(total)}</span>
         </div>
-        <div className="grid grid-cols-3 gap-2">
-          <Button onClick={() => checkout("CASH")} disabled={processing || !lines.length} className="flex-col gap-0.5 py-2.5 text-xs">
-            {processing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Banknote className="h-4 w-4" />} Cash
-          </Button>
-          <Button onClick={() => checkout("UDHAAR")} disabled={processing || !lines.length} variant="secondary" className="flex-col gap-0.5 py-2.5 text-xs">
-            <NotebookPen className="h-4 w-4" /> Udhaar
-          </Button>
-          <Button onClick={() => checkout("CARD")} disabled={processing || !lines.length} variant="secondary" className="flex-col gap-0.5 py-2.5 text-xs">
-            <CreditCard className="h-4 w-4" /> Card
-          </Button>
-        </div>
+        <Button onClick={onCharge} disabled={processing || !lines.length} className="w-full py-3 text-base">
+          {processing ? <Loader2 className="h-5 w-5 animate-spin" /> : <Banknote className="h-5 w-5" />} Charge {formatPKR(total)}
+        </Button>
       </div>
     </div>
   );
