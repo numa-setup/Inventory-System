@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { placeOrderSchema, firstIssue } from "@/lib/validation";
 import { round2 } from "@/lib/pricing";
 import { getDeliveryConfig } from "@/lib/storefront";
+import { notifyOrderPlaced } from "@/lib/notifications/dispatch";
 
 export interface PlaceOrderInput {
   items: { variant_id: string; product_id: string; qty: number; unit_price: number; title: string; variant_label?: string | null }[];
@@ -85,6 +86,17 @@ export async function placeOrder(input: PlaceOrderInput): Promise<{ ok: true; or
     await db.from("orders").delete().eq("id", orderId); // cascades items
     return { error: "Some items just went out of stock. Please review your bag." };
   }
+
+  // Best-effort notifications (confirmation to customer + alert to owner).
+  await notifyOrderPlaced({
+    order_no: orderNo,
+    customer_name: input.customer.name.trim(),
+    customer_phone: phone,
+    customer_email: input.customer.email || null,
+    address: input.customer.address.trim(),
+    total,
+    items: input.items.map((it) => ({ title: it.title, qty: it.qty, line_total: round2(it.qty * it.unit_price) })),
+  });
 
   revalidatePath("/orders");
   revalidatePath("/dashboard");

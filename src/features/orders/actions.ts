@@ -3,6 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentUser } from "@/lib/auth";
+import { notifyOrderStatus } from "@/lib/notifications/dispatch";
+
+const NOTIFY_AT = new Set(["SHIPPED", "OUT_FOR_DELIVERY", "DELIVERED", "CANCELLED"]);
 
 // Allowed forward transitions. Stock is deducted (via the ledger) the first time
 // an order ships; cancelling before that releases the held stock.
@@ -22,7 +25,7 @@ export async function updateOrderStatus(orderId: string, newStatus: string) {
   if (!user || (user.role !== "owner" && user.role !== "manager")) return { error: "Not authorized." };
   const db = createAdminClient();
 
-  const { data: order } = await db.from("orders").select("id, status, order_no").eq("id", orderId).maybeSingle();
+  const { data: order } = await db.from("orders").select("id, status, order_no, customer_name, customer_phone").eq("id", orderId).maybeSingle();
   if (!order) return { error: "Order not found." };
   if (!FORWARD[order.status]?.includes(newStatus)) {
     return { error: `Can’t move ${order.status} → ${newStatus}.` };
@@ -69,6 +72,11 @@ export async function updateOrderStatus(orderId: string, newStatus: string) {
 
   const { error } = await db.from("orders").update({ status: newStatus }).eq("id", orderId);
   if (error) return { error: error.message };
+
+  // Best-effort customer notification on shipping/delivery/cancellation.
+  if (NOTIFY_AT.has(newStatus)) {
+    await notifyOrderStatus({ order_no: order.order_no, customer_name: order.customer_name, customer_phone: order.customer_phone }, newStatus);
+  }
 
   revalidatePath("/orders");
   revalidatePath("/dashboard");

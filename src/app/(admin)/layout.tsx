@@ -34,8 +34,20 @@ export default async function AdminLayout({
     // profiles table not migrated yet — use fallbacks
   }
 
+  let unread = 0;
+  try {
+    const { count } = await supabase
+      .from("notifications")
+      .select("id", { count: "exact", head: true })
+      .eq("recipient_type", "ADMIN")
+      .is("read_at", null);
+    unread = count ?? 0;
+  } catch {
+    // notifications not readable yet — leave at 0
+  }
+
   return (
-    <AppShell role={role} userName={fullName}>
+    <AppShell role={role} userName={fullName} unreadCount={unread}>
       {children}
     </AppShell>
   );
