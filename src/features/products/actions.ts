@@ -210,6 +210,108 @@ export async function updateVariant(
   return { ok: true };
 }
 
+// ---- Bulk CSV import (products + opening stock) --------------------------
+export interface ImportRow {
+  name: string;
+  sku: string;
+  barcode?: string;
+  price: number;
+  cost: number;
+  qty: number;
+}
+export interface ValidatedRow extends ImportRow {
+  line: number;
+  status: "ok" | "error";
+  errors: string[];
+}
+
+type Db = ReturnType<typeof createAdminClient>;
+
+/** Validate rows against the DB and within the file (duplicate SKU/barcode, required fields). */
+async function validateRows(db: Db, rows: ImportRow[]): Promise<ValidatedRow[]> {
+  const skus = rows.map((r) => r.sku?.trim()).filter(Boolean);
+  const barcodes = rows.map((r) => r.barcode?.trim()).filter(Boolean) as string[];
+
+  const [{ data: pSku }, { data: vSku }, { data: bc }] = await Promise.all([
+    skus.length ? db.from("products").select("sku").in("sku", skus) : Promise.resolve({ data: [] as { sku: string }[] }),
+    skus.length ? db.from("product_variants").select("sku").in("sku", skus) : Promise.resolve({ data: [] as { sku: string }[] }),
+    barcodes.length ? db.from("product_barcodes").select("barcode").in("barcode", barcodes) : Promise.resolve({ data: [] as { barcode: string }[] }),
+  ]);
+  const existingSku = new Set([...(pSku ?? []), ...(vSku ?? [])].map((r) => r.sku));
+  const existingBarcode = new Set((bc ?? []).map((r) => r.barcode));
+
+  const seenSku = new Set<string>();
+  const seenBarcode = new Set<string>();
+
+  return rows.map((r, i) => {
+    const errors: string[] = [];
+    const sku = (r.sku ?? "").trim();
+    const barcode = (r.barcode ?? "").trim();
+    if (!r.name?.trim()) errors.push("Name required");
+    if (!sku) errors.push("SKU required");
+    else if (existingSku.has(sku)) errors.push("SKU already exists");
+    else if (seenSku.has(sku)) errors.push("Duplicate SKU in file");
+    if (barcode) {
+      if (existingBarcode.has(barcode)) errors.push("Barcode already exists");
+      else if (seenBarcode.has(barcode)) errors.push("Duplicate barcode in file");
+    }
+    if (!Number.isFinite(r.price) || r.price < 0) errors.push("Invalid price");
+    if (!Number.isFinite(r.cost) || r.cost < 0) errors.push("Invalid cost");
+    if (!Number.isFinite(r.qty) || r.qty < 0) errors.push("Invalid qty");
+    if (sku) seenSku.add(sku);
+    if (barcode) seenBarcode.add(barcode);
+    return { ...r, sku, barcode, line: i + 1, status: errors.length ? "error" : "ok", errors };
+  });
+}
+
+/** Dry-run: validate the parsed CSV rows without writing anything. */
+export async function validateProductImport(rows: ImportRow[]): Promise<ValidatedRow[] | { error: string }> {
+  if (!(await requireManager())) return { error: "Not authorized." };
+  return validateRows(createAdminClient(), rows);
+}
+
+/** Import only the rows that pass validation; posts opening stock for qty > 0. */
+export async function importProducts(rows: ImportRow[]) {
+  if (!(await requireManager())) return { error: "Not authorized." };
+  const db = createAdminClient();
+  const validated = await validateRows(db, rows);
+  const valid = validated.filter((r) => r.status === "ok");
+
+  const { data: locs } = await db.from("locations").select("id, code").in("code", ["SUP", "MAIN"]);
+  const sup = locs?.find((l) => l.code === "SUP")?.id;
+  const main = locs?.find((l) => l.code === "MAIN")?.id;
+
+  let created = 0;
+  for (const r of valid) {
+    const { data: product, error } = await db
+      .from("products")
+      .insert({ name: r.name.trim(), sku: r.sku, default_sale_price: r.price || 0, has_variants: false })
+      .select("id").single();
+    if (error || !product) continue;
+    const { data: variant } = await db
+      .from("product_variants")
+      .insert({ product_id: product.id, sku: r.sku, cost: r.cost || 0, sale_price: r.price || 0, is_default: true })
+      .select("id").single();
+    if (!variant) continue;
+    if (r.barcode) {
+      await db.from("product_barcodes").insert({
+        product_id: product.id, variant_id: variant.id, barcode: r.barcode,
+        type: /^\d{13}$/.test(r.barcode) ? "EAN" : "INTERNAL", is_primary: true,
+      });
+    }
+    if (r.qty > 0 && sup && main) {
+      await db.from("stock_moves").insert({
+        product_id: product.id, variant_id: variant.id, qty: r.qty, from_location_id: sup, to_location_id: main,
+        unit_cost: r.cost || 0, reference_type: "OPENING", source: "IMPORT", note: "CSV import",
+      });
+    }
+    created++;
+  }
+  revalidatePath("/products");
+  revalidatePath("/stock");
+  return { ok: true as const, created, skipped: validated.length - valid.length };
+}
+
 /**
  * Ensure a variant has a scannable barcode. If it already has one, return it;
  * otherwise generate an internal GS1 prefix-2 EAN-13 (or a weight template for

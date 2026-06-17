@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Search, ShoppingCart, Plus, Minus, Trash2, X, Banknote,
   Loader2, Package, ScanLine, Camera, CheckCircle2, AlertTriangle, Tag, RotateCcw,
@@ -160,6 +160,10 @@ export function PosClient({
 
   // load parked carts (this device) once
   useEffect(() => { setHeld(loadHeld()); }, []);
+
+  // open Returns prefilled when arriving from an invoice search (?receipt=…)
+  const returnReceipt = useSearchParams().get("receipt") ?? undefined;
+  useEffect(() => { if (returnReceipt) setReturnsOpen(true); }, [returnReceipt]);
 
   function add(p: PosProduct, delta = 1) {
     setCart((c) => {
@@ -548,7 +552,7 @@ export function PosClient({
         onClose={finishReceipt}
       />
 
-      <ReturnsSheet open={returnsOpen} onClose={() => setReturnsOpen(false)} />
+      <ReturnsSheet open={returnsOpen} onClose={() => setReturnsOpen(false)} initialReceipt={returnReceipt} />
 
       {heldOpen && (
         <div className="fixed inset-0 z-[60] flex items-end justify-center sm:items-center">

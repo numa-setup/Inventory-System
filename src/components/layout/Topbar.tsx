@@ -1,8 +1,9 @@
 "use client";
 
-import { Bell, Menu, Moon, ScanLine, Search, Sun } from "lucide-react";
+import { Bell, Menu, Moon, ScanLine, Sun } from "lucide-react";
 import { useTheme } from "@/components/theme/ThemeProvider";
 import { useScan } from "@/components/scan/ScanProvider";
+import { GlobalSearch } from "./GlobalSearch";
 import { Avatar } from "@/components/ui/Avatar";
 
 export function Topbar({
@@ -29,15 +30,8 @@ export function Topbar({
         <Menu className="h-5 w-5" />
       </button>
 
-      {/* Search */}
-      <div className="relative hidden max-w-md flex-1 sm:block">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-tertiary" />
-        <input
-          type="search"
-          placeholder="Search products, orders, customers…"
-          className="h-10 w-full rounded-lg border border-border bg-surface pl-9 pr-3 text-sm text-text-primary placeholder:text-text-tertiary focus-visible:border-brand-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/30"
-        />
-      </div>
+      {/* Global instant search */}
+      <GlobalSearch />
 
       <div className="ml-auto flex items-center gap-1.5">
         {/* Scan anywhere */}

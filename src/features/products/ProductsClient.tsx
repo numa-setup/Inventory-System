@@ -1,11 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Plus, Search, Package, Loader2, Barcode, ChevronRight, ChevronDown,
-  Pencil, Wand2, Layers, Tag, QrCode,
+  Pencil, Wand2, Layers, Tag, QrCode, Upload,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
@@ -21,6 +21,7 @@ import { cn, formatPKR } from "@/lib/utils";
 import { createProduct, updateVariant, bulkSetPrice, searchProducts, type ProductInput, type VariantInput } from "./actions";
 import { PRODUCTS_PAGE_SIZE, type ProductRow, type VariantRow, type ProductsPage } from "@/lib/products-query";
 import { LabelDialog, type LabelTarget } from "./LabelDialog";
+import { ImportDrawer } from "./ImportDrawer";
 
 export type { ProductRow, VariantRow };
 
@@ -47,13 +48,15 @@ export function ProductsClient({
   const router = useRouter();
   const toast = useToast();
   const queryClient = useQueryClient();
-  const [q, setQ] = useState("");
-  const [debouncedQ, setDebouncedQ] = useState("");
+  const initialQ = useSearchParams().get("q") ?? ""; // deep link from global search
+  const [q, setQ] = useState(initialQ);
+  const [debouncedQ, setDebouncedQ] = useState(initialQ);
   const [cat, setCat] = useState("");
   const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [editVariant, setEditVariant] = useState<VariantRow | null>(null);
   const [labelTarget, setLabelTarget] = useState<LabelTarget | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
 
   // Debounce the search box so we hit the server (indexed columns) at most
   // ~4×/sec while typing instead of on every keystroke.
@@ -148,6 +151,9 @@ export function ProductsClient({
               rows={[]}
               fetchRows={fetchExportRows}
             />
+            <Button variant="secondary" onClick={() => setImportOpen(true)}>
+              <Upload className="h-4 w-4" /> Import
+            </Button>
             <Button onClick={() => setOpen(true)}>
               <Plus className="h-4 w-4" /> Add Product
             </Button>
@@ -248,6 +254,8 @@ export function ProductsClient({
         onClose={() => setLabelTarget(null)}
         onChanged={refreshList}
       />
+
+      <ImportDrawer open={importOpen} onClose={() => setImportOpen(false)} onDone={refreshList} />
     </div>
   );
 }

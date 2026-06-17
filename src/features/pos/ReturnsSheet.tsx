@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { X, Search, Loader2, RotateCcw, Plus, Minus, AlertTriangle, Check } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -16,7 +16,7 @@ const REFUND_METHODS: { m: PayMethod; label: string }[] = [
   { m: "EASYPAISA", label: "Easypaisa" }, { m: "BANK", label: "Bank" }, { m: "UDHAAR", label: "Adjust khata" },
 ];
 
-export function ReturnsSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function ReturnsSheet({ open, onClose, initialReceipt }: { open: boolean; onClose: () => void; initialReceipt?: string }) {
   const toast = useToast();
   const [receiptNo, setReceiptNo] = useState("");
   const [sale, setSale] = useState<SaleForReturn | null>(null);
@@ -26,6 +26,12 @@ export function ReturnsSheet({ open, onClose }: { open: boolean; onClose: () => 
   const [loading, setLoading] = useState(false);
   const [processing, setProcessing] = useState(false);
 
+  // When opened from an invoice search result, prefill and auto-find.
+  useEffect(() => {
+    if (open && initialReceipt) { setReceiptNo(initialReceipt); void find(initialReceipt); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, initialReceipt]);
+
   if (!open) return null;
 
   function reset() {
@@ -33,10 +39,11 @@ export function ReturnsSheet({ open, onClose }: { open: boolean; onClose: () => 
   }
   function close() { reset(); onClose(); }
 
-  async function find() {
-    if (!receiptNo.trim()) return;
+  async function find(code?: string) {
+    const rn = (code ?? receiptNo).trim();
+    if (!rn) return;
     setLoading(true);
-    const res = await getSaleForReturn(receiptNo);
+    const res = await getSaleForReturn(rn);
     setLoading(false);
     if ("error" in res) { setSale(null); return toast(res.error, "error"); }
     setSale(res);
@@ -94,7 +101,7 @@ export function ReturnsSheet({ open, onClose }: { open: boolean; onClose: () => 
               <Input value={receiptNo} onChange={(e) => setReceiptNo(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && find()} placeholder="Receipt number, e.g. INV-12345678" className="pl-9" autoFocus />
             </div>
-            <Button type="button" onClick={find} disabled={loading} className="shrink-0">
+            <Button type="button" onClick={() => find()} disabled={loading} className="shrink-0">
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Find"}
             </Button>
           </div>
