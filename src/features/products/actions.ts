@@ -28,6 +28,67 @@ async function requireManager() {
   return user;
 }
 
+async function requireOwner() {
+  const user = await getCurrentUser();
+  if (!user || user.role !== "owner") return null;
+  return user;
+}
+
+/** Archive (deactivate) or restore a product — the everyday soft-delete path. */
+export async function setProductActive(productId: string, active: boolean) {
+  if (!(await requireManager())) return { error: "Not authorized." };
+  const db = createAdminClient();
+  const { error } = await db.from("products").update({ active }).eq("id", productId);
+  if (error) return { error: error.message };
+  revalidatePath("/products");
+  revalidatePath("/stock");
+  return { ok: true as const };
+}
+
+/**
+ * Permanently delete a product — owner only, and only when it has NO transaction
+ * history (so historical reports stay correct). Requires the typed name to match.
+ * Child rows (variants, barcodes, options, listing) cascade automatically.
+ */
+export async function permanentlyDeleteProduct(productId: string, confirmName: string) {
+  if (!(await requireOwner())) return { error: "Only the owner can permanently delete products." };
+  const db = createAdminClient();
+
+  const { data: product } = await db.from("products").select("id, name").eq("id", productId).maybeSingle();
+  if (!product) return { error: "Product not found." };
+  if (confirmName.trim() !== (product.name as string).trim()) {
+    return { error: "The name you typed doesn’t match — nothing was deleted." };
+  }
+
+  // Block if the product appears in any ledger / sale / order / reservation / PO.
+  const head = { count: "exact" as const, head: true };
+  const checks = await Promise.all([
+    db.from("stock_moves").select("id", head).eq("product_id", productId),
+    db.from("sale_items").select("id", head).eq("product_id", productId),
+    db.from("order_items").select("id", head).eq("product_id", productId),
+    db.from("reservations").select("id", head).eq("product_id", productId),
+    db.from("purchase_order_items").select("id", head).eq("product_id", productId),
+    db.from("goods_receipt_items").select("id", head).eq("product_id", productId),
+  ]);
+  const historyCount = checks.reduce((s, c) => s + (c.count ?? 0), 0);
+  if (historyCount > 0) {
+    return { error: "This product has transaction history, so it can’t be permanently deleted. Archive it instead to keep your reports accurate.", hasHistory: true as const };
+  }
+
+  // Defensive: clear any (orphan) stock_levels rows, which don't cascade.
+  const { data: variants } = await db.from("product_variants").select("id").eq("product_id", productId);
+  const variantIds = (variants ?? []).map((v) => v.id);
+  if (variantIds.length) await db.from("stock_levels").delete().in("variant_id", variantIds);
+  await db.from("stock_levels").delete().eq("product_id", productId);
+
+  const { error } = await db.from("products").delete().eq("id", productId);
+  if (error) return { error: error.message };
+
+  revalidatePath("/products");
+  revalidatePath("/stock");
+  return { ok: true as const };
+}
+
 export interface VariantInput {
   sku: string;
   barcode?: string | null;

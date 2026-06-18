@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth";
 import { fetchProductsPage, PRODUCTS_PAGE_SIZE } from "@/lib/products-query";
 import { ProductsClient } from "@/features/products/ProductsClient";
 
@@ -12,9 +13,10 @@ export default async function ProductsPage() {
 
   // First page only (server-side paginated); the client loads more on demand.
   // Categories are a small dimension table loaded once for the filter dropdown.
-  const [firstPage, { data: categories }] = await Promise.all([
+  const [firstPage, { data: categories }, user] = await Promise.all([
     fetchProductsPage(supabase, { offset: 0, limit: PRODUCTS_PAGE_SIZE }),
     supabase.from("categories").select("id, name, parent_id").order("name"),
+    getCurrentUser(),
   ]);
 
   const cats = (categories ?? []) as CatRow[];
@@ -27,5 +29,5 @@ export default async function ProductsPage() {
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
 
-  return <ProductsClient initialPage={firstPage} categories={catOptions} />;
+  return <ProductsClient initialPage={firstPage} categories={catOptions} isOwner={user?.role === "owner"} />;
 }

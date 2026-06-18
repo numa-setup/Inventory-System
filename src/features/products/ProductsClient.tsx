@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Plus, Search, Package, Loader2, Barcode, ChevronRight, ChevronDown,
-  Pencil, Wand2, Layers, Tag, QrCode, Upload,
+  Pencil, Wand2, Layers, Tag, QrCode, Upload, Archive, ArchiveRestore, Trash2, AlertTriangle,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
@@ -18,7 +18,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { useToast } from "@/components/ui/Toast";
 import { ExportMenu } from "@/components/ui/ExportMenu";
 import { cn, formatPKR } from "@/lib/utils";
-import { createProduct, updateVariant, bulkSetPrice, searchProducts, type ProductInput, type VariantInput } from "./actions";
+import { createProduct, updateVariant, bulkSetPrice, searchProducts, setProductActive, permanentlyDeleteProduct, type ProductInput, type VariantInput } from "./actions";
 import { PRODUCTS_PAGE_SIZE, type ProductRow, type VariantRow, type ProductsPage } from "@/lib/products-query";
 import { LabelDialog, type LabelTarget } from "./LabelDialog";
 import { ImportDrawer } from "./ImportDrawer";
@@ -42,9 +42,11 @@ function productStatus(p: ProductRow) {
 export function ProductsClient({
   initialPage,
   categories,
+  isOwner,
 }: {
   initialPage: ProductsPage;
   categories: CatOption[];
+  isOwner: boolean;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -58,6 +60,14 @@ export function ProductsClient({
   const [editVariant, setEditVariant] = useState<VariantRow | null>(null);
   const [labelTarget, setLabelTarget] = useState<LabelTarget | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<ProductRow | null>(null);
+
+  async function archive(p: ProductRow, active: boolean) {
+    const res = await setProductActive(p.id, active);
+    if (res?.error) return toast(res.error, "error");
+    toast(active ? "Product restored" : "Product archived");
+    refreshList();
+  }
 
   // Debounce the search box so we hit the server (indexed columns) at most
   // ~4×/sec while typing instead of on every keystroke.
@@ -217,6 +227,9 @@ export function ProductsClient({
                 is_variable_weight: p.is_variable_weight,
               })}
               onImageChanged={refreshList}
+              isOwner={isOwner}
+              onArchive={(active) => archive(p, active)}
+              onDelete={() => setDeleteTarget(p)}
               onBulkPrice={async (price) => {
                 const res = await bulkSetPrice(p.id, price);
                 if (res?.error) return toast(res.error, "error");
@@ -258,6 +271,13 @@ export function ProductsClient({
       />
 
       <ImportDrawer open={importOpen} onClose={() => setImportOpen(false)} onDone={refreshList} />
+
+      <DeleteProductDialog
+        product={deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onArchive={() => { if (deleteTarget) archive(deleteTarget, false); setDeleteTarget(null); }}
+        onDeleted={() => { setDeleteTarget(null); refreshList(); }}
+      />
     </div>
   );
 }
@@ -265,7 +285,7 @@ export function ProductsClient({
 /* ---------------- Expandable product group ---------------- */
 
 function ProductGroup({
-  p, isOpen, onToggle, onEditVariant, onLabel, onBulkPrice, onImageChanged,
+  p, isOpen, onToggle, onEditVariant, onLabel, onBulkPrice, onImageChanged, isOwner, onArchive, onDelete,
 }: {
   p: ProductRow;
   isOpen: boolean;
@@ -274,6 +294,9 @@ function ProductGroup({
   onLabel: (v: VariantRow) => void;
   onBulkPrice: (price: number) => void;
   onImageChanged: () => void;
+  isOwner: boolean;
+  onArchive: (active: boolean) => void;
+  onDelete: () => void;
 }) {
   const [bulk, setBulk] = useState("");
   const price = p.price_min === p.price_max
@@ -297,7 +320,12 @@ function ProductGroup({
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <span className="truncate font-medium text-text-primary">{p.name}</span>
+              <span className={cn("truncate font-medium text-text-primary", !p.active && "text-text-tertiary line-through")}>{p.name}</span>
+              {!p.active && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5 text-[11px] font-medium text-text-tertiary">
+                  <Archive className="h-3 w-3" /> Archived
+                </span>
+              )}
               {p.has_variants && (
                 <span className="inline-flex items-center gap-1 rounded-full bg-purple-tile px-2 py-0.5 text-[11px] font-medium text-purple-text">
                   <Layers className="h-3 w-3" /> {p.variant_count}
@@ -396,6 +424,25 @@ function ProductGroup({
                 ))}
               </tbody>
             </table>
+          </div>
+
+          {/* archive / delete */}
+          <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2">
+            {p.active ? (
+              <Button variant="secondary" size="sm" onClick={() => onArchive(false)}>
+                <Archive className="h-3.5 w-3.5" /> Archive
+              </Button>
+            ) : (
+              <Button variant="secondary" size="sm" onClick={() => onArchive(true)}>
+                <ArchiveRestore className="h-3.5 w-3.5" /> Restore
+              </Button>
+            )}
+            <span className="text-xs text-text-tertiary">Hides it from sale &amp; storefront, keeps history.</span>
+            {isOwner && (
+              <button onClick={onDelete} className="ml-auto inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-coral-text hover:bg-coral-tile">
+                <Trash2 className="h-3.5 w-3.5" /> Permanently delete
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -755,5 +802,86 @@ function AddProductDrawer({
         <FieldError message={err} />
       </form>
     </Drawer>
+  );
+}
+
+/* ---------------- Permanent delete dialog ---------------- */
+
+function DeleteProductDialog({
+  product, onClose, onArchive, onDeleted,
+}: {
+  product: ProductRow | null;
+  onClose: () => void;
+  onArchive: () => void;
+  onDeleted: () => void;
+}) {
+  const toast = useToast();
+  const [typed, setTyped] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [blocked, setBlocked] = useState(false);
+
+  useEffect(() => { setTyped(""); setBlocked(false); }, [product]);
+
+  if (!product) return null;
+  const match = typed.trim() === product.name.trim();
+
+  async function confirmDelete() {
+    if (!product || !match) return;
+    setBusy(true);
+    const res = await permanentlyDeleteProduct(product.id, typed);
+    setBusy(false);
+    if (res && "error" in res && res.error) {
+      if ("hasHistory" in res) setBlocked(true);
+      else toast(res.error, "error");
+      return;
+    }
+    toast("Product permanently deleted");
+    onDeleted();
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40 animate-fade-in" onClick={busy ? undefined : onClose} />
+      <div className="relative z-10 w-full max-w-md rounded-2xl bg-surface p-5 shadow-drawer animate-fade-in">
+        <div className="mb-3 flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-coral-tile text-coral-icon">
+            <AlertTriangle className="h-5 w-5" />
+          </div>
+          <div>
+            <h2 className="font-heading text-lg font-semibold text-text-primary">Permanently delete</h2>
+            <p className="text-sm text-text-secondary">{product.name}</p>
+          </div>
+        </div>
+
+        {blocked ? (
+          <>
+            <p className="rounded-lg bg-amber-tile px-3 py-2 text-sm text-amber-text">
+              This product has transaction history, so it can’t be permanently deleted — that would corrupt your reports.
+              You can <strong>archive</strong> it instead to hide it from sale and the storefront while keeping history intact.
+            </p>
+            <div className="mt-4 flex gap-2">
+              <Button type="button" variant="secondary" className="flex-1" onClick={onClose}>Cancel</Button>
+              <Button type="button" className="flex-1" onClick={onArchive}><Archive className="h-4 w-4" /> Archive instead</Button>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="text-sm text-text-secondary">
+              This permanently removes the product, its variants, barcodes and storefront listing. <strong>This can’t be undone.</strong>
+            </p>
+            <label className="mt-4 block">
+              <span className="text-xs text-text-tertiary">Type <span className="font-medium text-text-primary">{product.name}</span> to confirm</span>
+              <Input value={typed} onChange={(e) => setTyped(e.target.value)} placeholder={product.name} autoFocus className="mt-1" />
+            </label>
+            <div className="mt-4 flex gap-2">
+              <Button type="button" variant="secondary" className="flex-1" onClick={onClose}>Cancel</Button>
+              <Button type="button" variant="danger" className="flex-1" disabled={!match || busy} onClick={confirmDelete}>
+                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />} Delete forever
+              </Button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
   );
 }
