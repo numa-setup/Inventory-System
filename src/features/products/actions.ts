@@ -148,7 +148,7 @@ export async function createProduct(input: ProductInput) {
 /** Update the parent product's descriptive fields. */
 export async function updateProduct(
   id: string,
-  input: { name?: string; brand?: string | null; category_id?: string | null; description?: string | null; active?: boolean },
+  input: { name?: string; brand?: string | null; category_id?: string | null; description?: string | null; base_unit?: string; active?: boolean },
 ) {
   if (!(await requireManager())) return { error: "Not authorized." };
   const db = createAdminClient();
@@ -159,25 +159,52 @@ export async function updateProduct(
       brand: input.brand ?? null,
       category_id: input.category_id || null,
       description: input.description ?? null,
+      ...(input.base_unit ? { base_unit: input.base_unit } : {}),
       ...(input.active !== undefined ? { active: input.active } : {}),
     })
     .eq("id", id);
   if (error) return { error: error.message };
   revalidatePath("/products");
+  revalidatePath("/stock");
   return { ok: true };
 }
 
-/** Update a single variant's pricing / reorder / active flag. */
+/** Update a single variant's SKU / barcode / pricing / reorder / active flag. */
 export async function updateVariant(
   id: string,
-  input: { sale_price?: number; cost?: number; reorder_point?: number; active?: boolean },
+  input: { sku?: string; barcode?: string | null; sale_price?: number; cost?: number; reorder_point?: number; active?: boolean },
 ) {
   if (!(await requireManager())) return { error: "Not authorized." };
-  const v = variantPatchSchema.safeParse(input);
+  const { sku, barcode, ...rest } = input;
+  const v = variantPatchSchema.safeParse(rest);
   if (!v.success) return { error: firstIssue(v.error) };
   const db = createAdminClient();
-  const { error } = await db.from("product_variants").update(input).eq("id", id);
-  if (error) return { error: error.message };
+
+  const patch: Record<string, unknown> = { ...rest };
+  if (sku !== undefined && sku.trim()) patch.sku = sku.trim();
+  const { error } = await db.from("product_variants").update(patch).eq("id", id);
+  if (error) {
+    return { error: error.message.includes("duplicate") ? "That SKU is already used by another variant." : error.message };
+  }
+
+  // Barcode: update the variant's primary barcode (insert if it has none).
+  if (barcode !== undefined) {
+    const code = (barcode ?? "").trim();
+    const { data: variant } = await db.from("product_variants").select("product_id").eq("id", id).maybeSingle();
+    const { data: existing } = await db.from("product_barcodes").select("id").eq("variant_id", id).eq("is_primary", true).maybeSingle();
+    if (code) {
+      if (existing) {
+        const { error: bErr } = await db.from("product_barcodes").update({ barcode: code }).eq("id", existing.id);
+        if (bErr) return { error: bErr.message.includes("duplicate") ? "That barcode is already used elsewhere." : bErr.message };
+      } else if (variant) {
+        const { error: bErr } = await db.from("product_barcodes").insert({ product_id: variant.product_id, variant_id: id, barcode: code, type: "EAN", is_primary: true });
+        if (bErr) return { error: bErr.message.includes("duplicate") ? "That barcode is already used elsewhere." : bErr.message };
+      }
+    } else if (existing) {
+      await db.from("product_barcodes").delete().eq("id", existing.id);
+    }
+  }
+
   revalidatePath("/products");
   return { ok: true };
 }

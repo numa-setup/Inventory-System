@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Plus, Search, Package, Loader2, Barcode, ChevronRight, ChevronDown,
-  Pencil, Wand2, Layers, Tag, QrCode, Upload, Archive, ArchiveRestore, Trash2, AlertTriangle,
+  Pencil, Wand2, Layers, Tag, QrCode, Upload, Archive, ArchiveRestore, Trash2, AlertTriangle, ImagePlus, X,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
@@ -18,7 +18,9 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { useToast } from "@/components/ui/Toast";
 import { ExportMenu } from "@/components/ui/ExportMenu";
 import { cn, formatPKR } from "@/lib/utils";
-import { createProduct, updateVariant, bulkSetPrice, searchProducts, setProductActive, permanentlyDeleteProduct, type ProductInput, type VariantInput } from "./actions";
+import { createProduct, updateProduct, updateVariant, bulkSetPrice, searchProducts, setProductActive, permanentlyDeleteProduct, uploadProductImages, type ProductInput, type VariantInput } from "./actions";
+
+const UNIT_OPTIONS = ["pcs", "kg", "g", "litre", "ml", "pack", "dozen", "box", "metre"];
 import { PRODUCTS_PAGE_SIZE, type ProductRow, type VariantRow, type ProductsPage } from "@/lib/products-query";
 import { LabelDialog, type LabelTarget } from "./LabelDialog";
 import { ImportDrawer } from "./ImportDrawer";
@@ -64,6 +66,7 @@ export function ProductsClient({
   const [labelTarget, setLabelTarget] = useState<LabelTarget | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<ProductRow | null>(null);
+  const [editProduct, setEditProduct] = useState<ProductRow | null>(null);
 
   async function archive(p: ProductRow, active: boolean) {
     const res = await setProductActive(p.id, active);
@@ -231,6 +234,7 @@ export function ProductsClient({
               })}
               onImageChanged={refreshList}
               isOwner={isOwner}
+              onEdit={() => setEditProduct(p)}
               onArchive={(active) => archive(p, active)}
               onDelete={() => setDeleteTarget(p)}
               onBulkPrice={async (price) => {
@@ -281,6 +285,14 @@ export function ProductsClient({
         onArchive={() => { if (deleteTarget) archive(deleteTarget, false); setDeleteTarget(null); }}
         onDeleted={() => { setDeleteTarget(null); refreshList(); }}
       />
+
+      <EditProductDrawer
+        product={editProduct}
+        catTree={catTree}
+        onClose={() => setEditProduct(null)}
+        onSaved={() => { setEditProduct(null); toast("Product updated"); refreshList(); }}
+        onError={(m) => toast(m, "error")}
+      />
     </div>
   );
 }
@@ -288,7 +300,7 @@ export function ProductsClient({
 /* ---------------- Expandable product group ---------------- */
 
 function ProductGroup({
-  p, isOpen, onToggle, onEditVariant, onLabel, onBulkPrice, onImageChanged, isOwner, onArchive, onDelete,
+  p, isOpen, onToggle, onEditVariant, onLabel, onBulkPrice, onImageChanged, isOwner, onEdit, onArchive, onDelete,
 }: {
   p: ProductRow;
   isOpen: boolean;
@@ -298,6 +310,7 @@ function ProductGroup({
   onBulkPrice: (price: number) => void;
   onImageChanged: () => void;
   isOwner: boolean;
+  onEdit: () => void;
   onArchive: (active: boolean) => void;
   onDelete: () => void;
 }) {
@@ -351,6 +364,9 @@ function ProductGroup({
 
       {isOpen && (
         <div className="bg-surface-2/50 px-4 pb-4 pt-1">
+          <div className="flex items-center justify-end pt-3">
+            <Button variant="secondary" size="sm" onClick={onEdit}><Pencil className="h-3.5 w-3.5" /> Edit product</Button>
+          </div>
           <div className="pt-3">
             <ImageGallery productId={p.id} onChanged={onImageChanged} />
           </div>
@@ -463,7 +479,7 @@ function VariantEditDrawer({
   onSaved: () => void;
   onError: (m: string) => void;
 }) {
-  const [form, setForm] = useState({ sale_price: "", cost: "", reorder_point: "" });
+  const [form, setForm] = useState({ sku: "", barcode: "", sale_price: "", cost: "", reorder_point: "" });
   const [saving, setSaving] = useState(false);
 
   // sync when a new variant is opened
@@ -471,6 +487,8 @@ function VariantEditDrawer({
   if (variant && variant.id !== lastId) {
     setLastId(variant.id);
     setForm({
+      sku: variant.sku,
+      barcode: variant.barcode ?? "",
       sale_price: String(variant.sale_price),
       cost: String(variant.cost),
       reorder_point: String(variant.reorder_point),
@@ -480,8 +498,11 @@ function VariantEditDrawer({
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!variant) return;
+    if (!form.sku.trim()) return onError("SKU is required.");
     setSaving(true);
     const res = await updateVariant(variant.id, {
+      sku: form.sku,
+      barcode: form.barcode || null,
       sale_price: Number(form.sale_price) || 0,
       cost: Number(form.cost) || 0,
       reorder_point: Number(form.reorder_point) || 0,
@@ -506,9 +527,16 @@ function VariantEditDrawer({
       }
     >
       <form id="edit-variant-form" onSubmit={submit} className="space-y-4">
-        <p className="text-xs text-text-tertiary">
-          {variant?.sku}{variant?.barcode ? ` · ${variant.barcode}` : ""}
-        </p>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <Label>SKU *</Label>
+            <Input value={form.sku} onChange={(e) => setForm((f) => ({ ...f, sku: e.target.value }))} />
+          </div>
+          <div>
+            <Label className="flex items-center gap-1.5"><Barcode className="h-3.5 w-3.5" /> Barcode</Label>
+            <Input value={form.barcode} onChange={(e) => setForm((f) => ({ ...f, barcode: e.target.value }))} placeholder="Scan or type" />
+          </div>
+        </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
             <Label>Sale price (₨)</Label>
@@ -560,9 +588,10 @@ function AddProductDrawer({
   onSaved: () => void;
   onError: (m: string) => void;
 }) {
-  const [base, setBase] = useState({ name: "", brand: "", category_id: "", base_sku: "", base_price: "", description: "" });
+  const [base, setBase] = useState({ name: "", brand: "", category_id: "", base_sku: "", base_price: "", unit: "pcs", description: "" });
   const [parentCat, setParentCat] = useState("");
   const [hasVariants, setHasVariants] = useState(false);
+  const [images, setImages] = useState<File[]>([]);
 
   const topCats = catTree.filter((c) => !c.parent_id);
   const subCats = catTree.filter((c) => c.parent_id === parentCat);
@@ -573,9 +602,10 @@ function AddProductDrawer({
   const [err, setErr] = useState<string>();
 
   const reset = () => {
-    setBase({ name: "", brand: "", category_id: "", base_sku: "", base_price: "", description: "" });
+    setBase({ name: "", brand: "", category_id: "", base_sku: "", base_price: "", unit: "pcs", description: "" });
     setParentCat("");
     setHasVariants(false);
+    setImages([]);
     setSingle({ sku: "", barcode: "", cost: "", reorder: "3", opening_qty: "" });
     setOptions([{ name: "", values: "" }]);
     setMatrix([]);
@@ -626,7 +656,7 @@ function AddProductDrawer({
       };
       payload = {
         name: base.name, brand: base.brand || null, category_id: base.category_id || null,
-        description: base.description || null, base_price: Number(base.base_price) || 0,
+        description: base.description || null, base_unit: base.unit, base_price: Number(base.base_price) || 0,
         has_variants: false, options: [], variants: [v],
       };
     } else {
@@ -634,7 +664,7 @@ function AddProductDrawer({
       if (matrix.some((m) => !m.sku)) { setErr("Every variant needs a SKU."); return; }
       payload = {
         name: base.name, brand: base.brand || null, category_id: base.category_id || null,
-        description: base.description || null, base_price: Number(base.base_price) || 0,
+        description: base.description || null, base_unit: base.unit, base_price: Number(base.base_price) || 0,
         has_variants: true,
         options: definedOptions,
         variants: matrix.map((m) => ({
@@ -651,8 +681,14 @@ function AddProductDrawer({
 
     setSaving(true);
     const res = await createProduct(payload);
+    if (res?.error) { setSaving(false); setErr(res.error); onError(res.error); return; }
+    // Upload any selected photos now that the product exists.
+    if (images.length && "id" in res && res.id) {
+      const fd = new FormData();
+      images.forEach((f) => fd.append("files", f));
+      await uploadProductImages(res.id, fd);
+    }
     setSaving(false);
-    if (res?.error) { setErr(res.error); onError(res.error); return; }
     reset();
     onSaved();
   }
@@ -700,7 +736,7 @@ function AddProductDrawer({
             {topCats.length === 0 && <p className="mt-1 text-xs text-text-tertiary">No categories yet — add them in the Categories screen.</p>}
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-3 gap-3">
           <div>
             <Label>Base SKU</Label>
             <Input value={base.base_sku} onChange={(e) => setBase((b) => ({ ...b, base_sku: e.target.value }))} placeholder="COS-LIP-02" />
@@ -709,6 +745,28 @@ function AddProductDrawer({
             <Label>Base price (₨)</Label>
             <Input type="number" value={base.base_price} onChange={(e) => setBase((b) => ({ ...b, base_price: e.target.value }))} placeholder="0" />
           </div>
+          <div>
+            <Label>Unit</Label>
+            <Select value={base.unit} onChange={(e) => setBase((b) => ({ ...b, unit: e.target.value }))}>
+              {UNIT_OPTIONS.map((u) => <option key={u} value={u}>{u}</option>)}
+            </Select>
+          </div>
+        </div>
+
+        <div>
+          <Label>Description</Label>
+          <textarea
+            value={base.description}
+            onChange={(e) => setBase((b) => ({ ...b, description: e.target.value }))}
+            rows={2}
+            placeholder="Short description (shown on the storefront)"
+            className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus-visible:border-brand-500 focus-visible:outline-none"
+          />
+        </div>
+
+        <div>
+          <Label>Photos</Label>
+          <ImageFilePicker files={images} onChange={setImages} />
         </div>
 
         {/* variant toggle */}
@@ -819,6 +877,160 @@ function AddProductDrawer({
 
         <FieldError message={err} />
       </form>
+    </Drawer>
+  );
+}
+
+/* ---------------- Local image picker (before product exists) ---------------- */
+
+function ImageFilePicker({ files, onChange }: { files: File[]; onChange: (f: File[]) => void }) {
+  const ref = useRef<HTMLInputElement>(null);
+  const previews = useMemo(() => files.map((f) => URL.createObjectURL(f)), [files]);
+  useEffect(() => () => previews.forEach((u) => URL.revokeObjectURL(u)), [previews]);
+
+  function add(e: React.ChangeEvent<HTMLInputElement>) {
+    const picked = Array.from(e.target.files ?? []).filter((f) => f.type.startsWith("image/") && f.size <= 5_242_880);
+    e.target.value = "";
+    onChange([...files, ...picked].slice(0, 8));
+  }
+
+  return (
+    <div>
+      <input ref={ref} type="file" accept="image/*" multiple onChange={add} className="hidden" />
+      <div className="flex flex-wrap gap-2">
+        {files.map((f, i) => (
+          <div key={i} className="group relative h-16 w-16 overflow-hidden rounded-md border border-border bg-surface-2">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={previews[i]} alt="" className="h-full w-full object-cover" />
+            {i === 0 && <span className="absolute left-0 top-0 bg-brand-500 px-1 text-[8px] font-medium text-white">Cover</span>}
+            <button type="button" onClick={() => onChange(files.filter((_, idx) => idx !== i))} className="absolute right-0 top-0 bg-black/50 p-0.5 text-white opacity-0 transition-opacity group-hover:opacity-100">
+              <X className="h-3 w-3" />
+            </button>
+          </div>
+        ))}
+        <button type="button" onClick={() => ref.current?.click()} className="flex h-16 w-16 flex-col items-center justify-center gap-1 rounded-md border border-dashed border-border text-text-tertiary hover:border-brand-500">
+          <ImagePlus className="h-4 w-4" /><span className="text-[10px]">Add</span>
+        </button>
+      </div>
+      <p className="mt-1 text-[11px] text-text-tertiary">First photo is the cover. JPG/PNG/WebP, up to 5 MB each.</p>
+    </div>
+  );
+}
+
+/* ---------------- Edit product (all product-level fields) ---------------- */
+
+function EditProductDrawer({
+  product, catTree, onClose, onSaved, onError,
+}: {
+  product: ProductRow | null;
+  catTree: CatTreeRow[];
+  onClose: () => void;
+  onSaved: () => void;
+  onError: (m: string) => void;
+}) {
+  const [form, setForm] = useState({ name: "", brand: "", category_id: "", unit: "pcs", description: "", active: true });
+  const [parentCat, setParentCat] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [lastId, setLastId] = useState<string | null>(null);
+
+  if (product && product.id !== lastId) {
+    setLastId(product.id);
+    const cat = catTree.find((c) => c.id === product.category_id);
+    setParentCat(cat ? (cat.parent_id ?? cat.id) : "");
+    setForm({
+      name: product.name, brand: product.brand ?? "", category_id: product.category_id ?? "",
+      unit: product.base_unit || "pcs", description: product.description ?? "", active: product.active,
+    });
+  }
+
+  const topCats = catTree.filter((c) => !c.parent_id);
+  const subCats = catTree.filter((c) => c.parent_id === parentCat);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!product) return;
+    if (!form.name.trim()) return onError("Product name is required.");
+    setSaving(true);
+    const res = await updateProduct(product.id, {
+      name: form.name, brand: form.brand || null, category_id: form.category_id || null,
+      description: form.description || null, base_unit: form.unit, active: form.active,
+    });
+    setSaving(false);
+    if (res?.error) return onError(res.error);
+    onSaved();
+  }
+
+  return (
+    <Drawer
+      open={!!product}
+      onClose={onClose}
+      title="Edit product"
+      width="max-w-2xl"
+      footer={
+        <div className="flex gap-2">
+          <Button type="button" variant="secondary" className="flex-1" onClick={onClose}>Cancel</Button>
+          <Button type="submit" form="edit-product-form" className="flex-1" disabled={saving}>
+            {saving && <Loader2 className="h-4 w-4 animate-spin" />} Save changes
+          </Button>
+        </div>
+      }
+    >
+      {product && (
+        <form id="edit-product-form" onSubmit={submit} className="space-y-4">
+          <div>
+            <Label>Product name *</Label>
+            <Input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Brand</Label>
+              <Input value={form.brand} onChange={(e) => setForm((f) => ({ ...f, brand: e.target.value }))} />
+            </div>
+            <div>
+              <Label>Unit</Label>
+              <Select value={form.unit} onChange={(e) => setForm((f) => ({ ...f, unit: e.target.value }))}>
+                {UNIT_OPTIONS.map((u) => <option key={u} value={u}>{u}</option>)}
+              </Select>
+            </div>
+          </div>
+          <div>
+            <Label>Category</Label>
+            <Select value={parentCat} onChange={(e) => { const id = e.target.value; setParentCat(id); setForm((f) => ({ ...f, category_id: id })); }}>
+              <option value="">— None —</option>
+              {topCats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </Select>
+            {parentCat && subCats.length > 0 && (
+              <div className="mt-2">
+                <Select value={form.category_id === parentCat ? "" : form.category_id}
+                  onChange={(e) => { const sub = e.target.value; setForm((f) => ({ ...f, category_id: sub || parentCat })); }}>
+                  <option value="">All {topCats.find((c) => c.id === parentCat)?.name} (no sub-category)</option>
+                  {subCats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </Select>
+              </div>
+            )}
+          </div>
+          <div>
+            <Label>Description</Label>
+            <textarea value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} rows={2}
+              className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus-visible:border-brand-500 focus-visible:outline-none" />
+          </div>
+
+          <label className="flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2.5 text-sm">
+            <input type="checkbox" checked={form.active} onChange={(e) => setForm((f) => ({ ...f, active: e.target.checked }))} className="h-4 w-4 rounded border-border" />
+            <span className="text-text-primary">Active</span>
+            <span className="text-text-tertiary">— unchecking archives it (hidden from sale &amp; storefront, history kept)</span>
+          </label>
+
+          <div>
+            <Label>Photos</Label>
+            <ImageGallery productId={product.id} />
+          </div>
+
+          <p className="rounded-lg bg-surface-2 px-3 py-2 text-[11px] text-text-tertiary">
+            Per-variant SKU, barcode, cost, price and reorder are edited from each variant’s <strong>Edit</strong> button. On-hand quantity changes only through the Stock area.
+          </p>
+        </form>
+      )}
     </Drawer>
   );
 }

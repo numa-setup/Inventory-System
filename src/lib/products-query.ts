@@ -29,6 +29,7 @@ export interface ProductRow {
   category_id: string | null;
   category: string;
   base_unit: string;
+  description: string | null;
   has_variants: boolean;
   is_variable_weight: boolean;
   active: boolean;
@@ -73,7 +74,7 @@ export async function fetchProductsPage(supabase: SupabaseClient<any>, params: P
   // 1. one page of parent products (filtered + counted, bounded by range)
   let pq = supabase
     .from("products")
-    .select("id, sku, name, brand, category_id, base_unit, default_sale_price, has_variants, is_variable_weight, active, image_url", {
+    .select("id, sku, name, brand, category_id, base_unit, description, default_sale_price, has_variants, is_variable_weight, active, image_url", {
       count: "exact",
     })
     .order("name")
@@ -159,6 +160,7 @@ export async function fetchProductsPage(supabase: SupabaseClient<any>, params: P
       category_id: p.category_id,
       category: p.category_id ? catName.get(p.category_id) ?? "—" : "—",
       base_unit: p.base_unit,
+      description: (p.description as string) ?? null,
       has_variants: p.has_variants,
       is_variable_weight: p.is_variable_weight,
       active: p.active,
