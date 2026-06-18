@@ -11,7 +11,8 @@ export function Providers({ children }: { children: React.ReactNode }) {
       new QueryClient({
         defaultOptions: {
           queries: {
-            staleTime: 30_000,
+            staleTime: 60_000, // 1 min: revisiting a tab within a minute serves from cache
+            gcTime: 5 * 60_000, // keep cached data 5 min so back-and-forth nav is instant
             refetchOnWindowFocus: false,
             retry: 1,
           },
