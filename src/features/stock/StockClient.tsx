@@ -186,7 +186,7 @@ export function StockClient({
         <StatTile label="Variants" value={rows.length} icon={Layers} accent="teal" />
       </div>
 
-      <Card className="mb-4 grid grid-cols-1 gap-3 p-3 sm:grid-cols-2 lg:grid-cols-[1fr_auto_auto_auto]">
+      <Card className="mb-4 grid grid-cols-1 gap-3 p-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_auto_auto_auto]">
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-tertiary" />
           <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search product, variant, SKU or barcode…" className="pl-9" />

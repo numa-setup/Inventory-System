@@ -54,7 +54,7 @@ export function CheckoutForm({ config }: { config: DeliveryConfig }) {
   return (
     <div className="mx-auto max-w-6xl px-5 py-12 lg:px-10">
       <h1 className="mb-10 text-center font-serif text-4xl text-store-ink">Checkout</h1>
-      <form onSubmit={submit} className="grid gap-12 lg:grid-cols-[1.2fr_1fr]">
+      <form onSubmit={submit} className="grid gap-12 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
         {/* delivery details */}
         <div>
           <h2 className="font-serif text-xl text-store-ink">Delivery details</h2>

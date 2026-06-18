@@ -48,6 +48,13 @@
   html {
     -webkit-text-size-adjust: 100%;
   }
+  /* Safety net: never allow a page/viewport-level horizontal scrollbar. Real
+     layout causes are fixed at the component level (min-w-0 on flex/grid
+     children, contained overflow-x-auto on tables); this just guarantees it. */
+  html,
+  body {
+    @apply max-w-full overflow-x-hidden;
+  }
   body {
     @apply bg-page text-text-primary font-body antialiased;
     font-feature-settings: "cv11", "ss01";

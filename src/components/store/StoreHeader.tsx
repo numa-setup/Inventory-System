@@ -38,7 +38,7 @@ export function StoreHeader({ storeName, categories }: { storeName: string; cate
         </button>
 
         {/* wordmark */}
-        <Link href="/shop" className="text-center font-serif text-2xl tracking-[0.3em] text-store-ink lg:text-3xl">
+        <Link href="/shop" className="truncate text-center font-serif text-base tracking-[0.12em] text-store-ink sm:text-2xl sm:tracking-[0.3em] lg:text-3xl">
           {wordmark}
         </Link>
 

@@ -438,9 +438,9 @@ export function PosClient({
   }, [paymentOpen, returnsOpen, cameraOpen, receiptData, shortcutsOpen, heldOpen, cart, q, filtered, highlight, lastReceipt]);
 
   return (
-    <div className="grid h-[calc(100vh-7rem)] grid-cols-1 gap-4 lg:grid-cols-[1fr_360px]">
+    <div className="grid h-[calc(100vh-7rem)] grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
       {/* product area */}
-      <div className="flex min-h-0 flex-col">
+      <div className="flex min-h-0 min-w-0 flex-col">
         <div className="mb-3 flex items-center gap-2">
           <div className="relative flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-tertiary" />

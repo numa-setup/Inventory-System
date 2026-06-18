@@ -71,7 +71,7 @@ export function SupplierDetailClient({
         }
       />
 
-      <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
+      <div className="grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
         {/* profile + balance */}
         <div className="space-y-4">
           <StatTile label="Payable balance" value={formatPKR(supplier.balance)} icon={Wallet} accent={supplier.balance > 0 ? "coral" : "green"} hint={supplier.balance > 0 ? "We owe this supplier" : "Settled"} />
@@ -88,7 +88,7 @@ export function SupplierDetailClient({
         </div>
 
         {/* tabs */}
-        <div>
+        <div className="min-w-0">
           <div className="mb-4 flex gap-1 rounded-lg border border-border bg-surface p-1">
             {([["ledger", "Ledger"], ["history", "Purchase History"], ["products", "Products"]] as [Tab, string][]).map(([k, label]) => (
               <button key={k} onClick={() => setTab(k)} className={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${tab === k ? "bg-brand-500 text-white" : "text-text-secondary hover:bg-surface-2"}`}>{label}</button>
