@@ -40,8 +40,8 @@ export async function setProductActive(productId: string, active: boolean) {
   const db = createAdminClient();
   const { error } = await db.from("products").update({ active }).eq("id", productId);
   if (error) return { error: error.message };
-  revalidatePath("/products");
-  revalidatePath("/stock");
+  revalidatePath("/admin/products");
+  revalidatePath("/admin/stock");
   return { ok: true as const };
 }
 
@@ -84,8 +84,8 @@ export async function permanentlyDeleteProduct(productId: string, confirmName: s
   const { error } = await db.from("products").delete().eq("id", productId);
   if (error) return { error: error.message };
 
-  revalidatePath("/products");
-  revalidatePath("/stock");
+  revalidatePath("/admin/products");
+  revalidatePath("/admin/stock");
   return { ok: true as const };
 }
 
@@ -140,8 +140,8 @@ export async function createProduct(input: ProductInput) {
     return { error: msg };
   }
 
-  revalidatePath("/products");
-  revalidatePath("/stock");
+  revalidatePath("/admin/products");
+  revalidatePath("/admin/stock");
   return { ok: true, id: data as string };
 }
 
@@ -164,8 +164,8 @@ export async function updateProduct(
     })
     .eq("id", id);
   if (error) return { error: error.message };
-  revalidatePath("/products");
-  revalidatePath("/stock");
+  revalidatePath("/admin/products");
+  revalidatePath("/admin/stock");
   return { ok: true };
 }
 
@@ -205,7 +205,7 @@ export async function updateVariant(
     }
   }
 
-  revalidatePath("/products");
+  revalidatePath("/admin/products");
   return { ok: true };
 }
 
@@ -310,8 +310,8 @@ export async function importProducts(rows: ImportRow[]) {
     }
     created++;
   }
-  revalidatePath("/products");
-  revalidatePath("/stock");
+  revalidatePath("/admin/products");
+  revalidatePath("/admin/stock");
   return { ok: true as const, created, skipped: validated.length - valid.length };
 }
 
@@ -346,7 +346,7 @@ export async function assignInternalBarcode(variantId: string, productId: string
     is_primary: true,
   });
   if (error) return { error: error.message };
-  revalidatePath("/products");
+  revalidatePath("/admin/products");
   return { ok: true, barcode, existed: false };
 }
 
@@ -398,7 +398,7 @@ export async function uploadProductImages(productId: string, formData: FormData)
 
   const images = [...(await currentImages(db, productId)), ...urls];
   await syncGallery(db, productId, images);
-  revalidatePath("/products");
+  revalidatePath("/admin/products");
   return { ok: true as const, images };
 }
 
@@ -410,7 +410,7 @@ export async function removeProductImageUrl(productId: string, url: string) {
   await syncGallery(db, productId, images);
   const path = url.split(`/${IMAGE_BUCKET}/`)[1];
   if (path) await db.storage.from(IMAGE_BUCKET).remove([path]);
-  revalidatePath("/products");
+  revalidatePath("/admin/products");
   return { ok: true as const, images };
 }
 
@@ -422,7 +422,7 @@ export async function setPrimaryProductImage(productId: string, url: string) {
   if (!cur.includes(url)) return { error: "Image not found." };
   const images = [url, ...cur.filter((u) => u !== url)];
   await syncGallery(db, productId, images);
-  revalidatePath("/products");
+  revalidatePath("/admin/products");
   return { ok: true as const, images };
 }
 
@@ -435,6 +435,6 @@ export async function bulkSetPrice(productId: string, salePrice: number) {
     .update({ sale_price: salePrice })
     .eq("product_id", productId);
   if (error) return { error: error.message };
-  revalidatePath("/products");
+  revalidatePath("/admin/products");
   return { ok: true };
 }

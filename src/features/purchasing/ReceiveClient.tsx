@@ -189,7 +189,7 @@ export function ReceiveClient({
     setSaving(false);
     if (res?.error) return toast(res.error, "error");
     toast(`Received — ${res.grn_no}`);
-    router.push("/purchasing");
+    router.push("/admin/purchasing");
   }
 
   return (
@@ -198,7 +198,7 @@ export function ReceiveClient({
         title="Receive Stock"
         subtitle="Add many variants in one receipt — scan or search each line"
         actions={
-          <Link href="/purchasing"><Button variant="secondary" size="sm"><ArrowLeft className="h-4 w-4" /> Back</Button></Link>
+          <Link href="/admin/purchasing"><Button variant="secondary" size="sm"><ArrowLeft className="h-4 w-4" /> Back</Button></Link>
         }
       />
 

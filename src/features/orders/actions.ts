@@ -78,8 +78,8 @@ export async function updateOrderStatus(orderId: string, newStatus: string) {
     await notifyOrderStatus({ order_no: order.order_no, customer_name: order.customer_name, customer_phone: order.customer_phone }, newStatus);
   }
 
-  revalidatePath("/orders");
-  revalidatePath("/dashboard");
-  revalidatePath("/stock");
+  revalidatePath("/admin/orders");
+  revalidatePath("/admin/dashboard");
+  revalidatePath("/admin/stock");
   return { ok: true as const };
 }

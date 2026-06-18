@@ -14,8 +14,8 @@ async function handle(req: NextRequest, fields: Record<string, string>) {
   try {
     if (easypaisaSucceeded(fields) && orderNo) {
       await creditOrder(orderNo, "EASYPAISA");
-      revalidatePath("/orders");
-      revalidatePath("/dashboard");
+      revalidatePath("/admin/orders");
+      revalidatePath("/admin/dashboard");
       return NextResponse.redirect(new URL(`/shop/order/${encodeURIComponent(orderNo)}`, origin), 303);
     }
     return NextResponse.redirect(new URL(`/shop/checkout?error=payment`, origin), 303);

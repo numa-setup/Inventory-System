@@ -29,7 +29,7 @@ export async function createDiscount(input: {
     end_at: input.end_at || null,
   });
   if (error) return { error: error.message };
-  revalidatePath("/discounts");
+  revalidatePath("/admin/discounts");
   return { ok: true };
 }
 
@@ -39,6 +39,6 @@ export async function toggleDiscount(id: string, active: boolean) {
   const db = createAdminClient();
   const { error } = await db.from("discounts").update({ active }).eq("id", id);
   if (error) return { error: error.message };
-  revalidatePath("/discounts");
+  revalidatePath("/admin/discounts");
   return { ok: true };
 }

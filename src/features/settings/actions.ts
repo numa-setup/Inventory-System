@@ -34,7 +34,7 @@ export async function updateStoreProfile(input: {
     address: input.address ?? "", phone: input.phone ?? "", ntn: input.ntn ?? "",
     receipt_header: input.receipt_header ?? "", receipt_footer: input.receipt_footer ?? "", logo_url: input.logo_url ?? "",
   });
-  revalidatePath("/settings");
+  revalidatePath("/admin/settings");
   return { ok: true };
 }
 
@@ -49,7 +49,7 @@ export async function updateInventorySettings(input: {
   await mergeJson(db, "store_info", {
     inventory: { low_stock_default: input.low_stock_default, barcode_format: input.barcode_format, default_unit: input.default_unit },
   });
-  revalidatePath("/settings");
+  revalidatePath("/admin/settings");
   return { ok: true };
 }
 
@@ -63,7 +63,7 @@ export async function updateSalesSettings(input: {
   await mergeJson(db, "store_info", {
     sales: { rounding: input.rounding, receipt_template: input.receipt_template, allow_discounts: input.allow_discounts },
   });
-  revalidatePath("/settings");
+  revalidatePath("/admin/settings");
   return { ok: true };
 }
 
@@ -91,7 +91,7 @@ export async function updateIntegrations(input: {
   });
   if (input.from_email !== undefined) await mergeJson(db, "store_info", { from_email: input.from_email });
   await mergeJson(db, "notif_prefs", input.notif_prefs);
-  revalidatePath("/settings");
+  revalidatePath("/admin/settings");
   return { ok: true };
 }
 
@@ -108,7 +108,7 @@ export async function inviteUser(input: { email: string; full_name: string; role
   if (error) return { error: error.message };
   // ensure profile reflects role/name (trigger also handles it)
   if (data.user) await db.from("profiles").update({ full_name: input.full_name, role: input.role }).eq("id", data.user.id);
-  revalidatePath("/settings");
+  revalidatePath("/admin/settings");
   return { ok: true };
 }
 
@@ -117,7 +117,7 @@ export async function updateUserRole(userId: string, role: "owner" | "manager" |
   const db = createAdminClient();
   const { error } = await db.from("profiles").update({ role }).eq("id", userId);
   if (error) return { error: error.message };
-  revalidatePath("/settings");
+  revalidatePath("/admin/settings");
   return { ok: true };
 }
 
@@ -128,7 +128,7 @@ export async function setUserActive(userId: string, active: boolean) {
   const db = createAdminClient();
   const { error } = await db.from("profiles").update({ active }).eq("id", userId);
   if (error) return { error: error.message };
-  revalidatePath("/settings");
+  revalidatePath("/admin/settings");
   return { ok: true };
 }
 
@@ -211,6 +211,6 @@ export async function importProductsCSV(rows: { name: string; sku: string; price
     }
     created++;
   }
-  revalidatePath("/settings"); revalidatePath("/products"); revalidatePath("/stock");
+  revalidatePath("/admin/settings"); revalidatePath("/admin/products"); revalidatePath("/admin/stock");
   return { ok: true, created, errors };
 }

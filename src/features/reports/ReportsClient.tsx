@@ -33,7 +33,7 @@ export function ReportsClient({ reportKey, data }: { reportKey: string; data: Re
     const next = new URLSearchParams();
     for (const k of ["preset", "from", "to"]) { const v = params.get(k); if (v) next.set(k, v); }
     next.set("report", key);
-    return `/reports?${next.toString()}`;
+    return `/admin/reports?${next.toString()}`;
   };
 
   const columns: Column<Record<string, unknown> & { id: number }>[] = data.columns.map((c) => ({

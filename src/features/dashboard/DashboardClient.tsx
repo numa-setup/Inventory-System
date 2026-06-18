@@ -92,14 +92,14 @@ export function DashboardClient({ data }: { data: DashboardData }) {
         <Card>
           <CardHeader className="flex items-center justify-between">
             <CardTitle className="flex items-center gap-2"><PackageX className="h-4 w-4 text-amber-icon" /> Low Stock</CardTitle>
-            <Link href="/purchasing/receive" className="text-xs font-medium text-brand-600 hover:underline">Reorder all</Link>
+            <Link href="/admin/purchasing/receive" className="text-xs font-medium text-brand-600 hover:underline">Reorder all</Link>
           </CardHeader>
           {data.lowStock.length === 0 ? <EmptyState icon={Boxes} title="Everything stocked" description="No variant is at its reorder point." /> : (
             <ul className="divide-y divide-border">
               {data.lowStock.map((r) => (
                 <li key={r.id} className="flex items-center justify-between px-4 py-2.5">
                   <div><div className="text-sm font-medium text-text-primary">{r.name}</div><div className="text-xs text-text-tertiary">{formatNumber(r.available)} left · reorder at {formatNumber(r.reorder)}</div></div>
-                  <Link href="/purchasing/receive"><Button size="sm" variant="secondary">Reorder</Button></Link>
+                  <Link href="/admin/purchasing/receive"><Button size="sm" variant="secondary">Reorder</Button></Link>
                 </li>
               ))}
             </ul>

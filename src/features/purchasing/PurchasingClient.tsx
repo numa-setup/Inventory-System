@@ -111,7 +111,7 @@ export function PurchasingClient({
               rows={suppliers.map((s) => ({ name: s.name, contact: s.contact_person ?? "", phone: s.phone ?? "", terms: s.payment_terms ?? "", payable: s.balance }))}
             />
             <Button size="sm" variant="secondary" onClick={() => setNewPO(true)}><FileText className="h-4 w-4" /> New PO</Button>
-            <Link href="/purchasing/receive"><Button size="sm"><PackageCheck className="h-4 w-4" /> Receive Stock</Button></Link>
+            <Link href="/admin/purchasing/receive"><Button size="sm"><PackageCheck className="h-4 w-4" /> Receive Stock</Button></Link>
           </div>
         }
       />
@@ -143,7 +143,7 @@ export function PurchasingClient({
           <DataTable
             columns={supplierCols}
             rows={suppliers}
-            onRowClick={(s) => router.push(`/purchasing/suppliers/${s.id}`)}
+            onRowClick={(s) => router.push(`/admin/purchasing/suppliers/${s.id}`)}
             empty={<EmptyState icon={Truck} title="No suppliers yet" description="Add your first supplier to start purchasing." />}
           />
         </Card>

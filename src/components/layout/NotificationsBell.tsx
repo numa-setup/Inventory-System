@@ -48,7 +48,7 @@ export function NotificationsBell({ unread: initialUnread }: { unread: number })
   async function openItem(n: AdminNotification) {
     setOpen(false);
     if (!n.read_at) { setUnread((u) => Math.max(0, u - 1)); await markNotificationsRead([n.id]); }
-    if (n.order_no || n.event.startsWith("order")) router.push("/orders");
+    if (n.order_no || n.event.startsWith("order")) router.push("/admin/orders");
     router.refresh();
   }
 

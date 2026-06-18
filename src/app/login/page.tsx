@@ -35,7 +35,7 @@ function LoginForm() {
       setError(error.message);
       return;
     }
-    router.push(params.get("next") ?? "/dashboard");
+    router.push(params.get("next") ?? "/admin/dashboard");
     router.refresh();
   }
 

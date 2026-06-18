@@ -38,9 +38,9 @@ async function logAudit(db: Db, actor: string, action: string, variantId: string
 }
 
 function done() {
-  revalidatePath("/stock");
-  revalidatePath("/products");
-  revalidatePath("/dashboard");
+  revalidatePath("/admin/stock");
+  revalidatePath("/admin/products");
+  revalidatePath("/admin/dashboard");
   return { ok: true as const };
 }
 

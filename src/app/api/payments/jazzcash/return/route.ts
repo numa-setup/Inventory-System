@@ -19,8 +19,8 @@ async function handle(req: NextRequest, fields: Record<string, string>) {
     const success = verified && fields.pp_ResponseCode === "000";
     if (success && orderNo) {
       await creditOrder(orderNo, "JAZZCASH");
-      revalidatePath("/orders");
-      revalidatePath("/dashboard");
+      revalidatePath("/admin/orders");
+      revalidatePath("/admin/dashboard");
       return NextResponse.redirect(new URL(`/shop/order/${encodeURIComponent(orderNo)}`, origin), 303);
     }
     return NextResponse.redirect(new URL(`/shop/checkout?error=payment`, origin), 303);

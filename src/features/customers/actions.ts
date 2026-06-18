@@ -21,7 +21,7 @@ export async function createCustomer(input: {
     credit_limit: input.credit_limit ?? 0,
   });
   if (error) return { error: error.message };
-  revalidatePath("/customers");
+  revalidatePath("/admin/customers");
   return { ok: true };
 }
 
@@ -48,6 +48,6 @@ export async function recordPayment(input: { customer_id: string; amount: number
   if (lErr) return { error: lErr.message };
 
   await db.from("customers").update({ credit_balance: newBalance }).eq("id", input.customer_id);
-  revalidatePath("/customers");
+  revalidatePath("/admin/customers");
   return { ok: true, balance: newBalance };
 }

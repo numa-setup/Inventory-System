@@ -61,7 +61,7 @@ export function GlobalSearch() {
               {res!.products.length > 0 && (
                 <Section label="Products">
                   {res!.products.map((p) => (
-                    <button key={p.variant_id} onClick={() => go(`/products?q=${encodeURIComponent(p.sku)}`)} className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-surface-2">
+                    <button key={p.variant_id} onClick={() => go(`/admin/products?q=${encodeURIComponent(p.sku)}`)} className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-surface-2">
                       <Package className="h-4 w-4 shrink-0 text-text-tertiary" />
                       <span className="min-w-0 flex-1 truncate text-sm text-text-primary">{p.name}{p.label ? ` · ${p.label}` : ""}</span>
                       <span className="shrink-0 text-xs text-text-tertiary">{p.sku}</span>
@@ -73,7 +73,7 @@ export function GlobalSearch() {
               {res!.categories.length > 0 && (
                 <Section label="Categories">
                   {res!.categories.map((c) => (
-                    <button key={c.id} onClick={() => go(`/products?q=${encodeURIComponent(c.name)}`)} className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-surface-2">
+                    <button key={c.id} onClick={() => go(`/admin/products?q=${encodeURIComponent(c.name)}`)} className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-surface-2">
                       <FolderTree className="h-4 w-4 shrink-0 text-text-tertiary" />
                       <span className="flex-1 truncate text-sm text-text-primary">{c.name}</span>
                     </button>
@@ -83,7 +83,7 @@ export function GlobalSearch() {
               {res!.invoices.length > 0 && (
                 <Section label="Invoices">
                   {res!.invoices.map((inv) => (
-                    <button key={inv.id} onClick={() => go(`/pos?receipt=${encodeURIComponent(inv.receipt_no)}`)} className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-surface-2">
+                    <button key={inv.id} onClick={() => go(`/admin/pos?receipt=${encodeURIComponent(inv.receipt_no)}`)} className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-surface-2">
                       <Receipt className="h-4 w-4 shrink-0 text-text-tertiary" />
                       <span className="flex-1 truncate text-sm text-text-primary">{inv.receipt_no}</span>
                       <span className="shrink-0 text-xs text-text-tertiary">{new Date(inv.created_at).toLocaleDateString("en-PK")}</span>

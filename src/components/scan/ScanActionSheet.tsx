@@ -91,7 +91,7 @@ export function ScanActionSheet({
               <AlertTriangle className="h-4 w-4 shrink-0" /> Unknown barcode <span className="font-mono">{unknown}</span>
             </div>
             <p className="text-sm text-text-secondary">This barcode isn’t on file. Create the product or link it while receiving stock.</p>
-            <Button className="w-full" onClick={() => { onClose(); router.push("/products"); }}>
+            <Button className="w-full" onClick={() => { onClose(); router.push("/admin/products"); }}>
               <ExternalLink className="h-4 w-4" /> Go to Products
             </Button>
           </div>
@@ -136,7 +136,7 @@ export function ScanActionSheet({
                 <Button variant="secondary" className="flex-col gap-1 py-2.5 text-xs" onClick={() => setMode("stock")}>
                   <Boxes className="h-4 w-4" /> Adjust
                 </Button>
-                <Button variant="secondary" className="flex-col gap-1 py-2.5 text-xs" onClick={() => { onClose(); router.push("/products"); }}>
+                <Button variant="secondary" className="flex-col gap-1 py-2.5 text-xs" onClick={() => { onClose(); router.push("/admin/products"); }}>
                   <ExternalLink className="h-4 w-4" /> Open
                 </Button>
               </div>

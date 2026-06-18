@@ -37,7 +37,7 @@ export function Sidebar({
       >
         {/* Brand */}
         <div className="flex h-16 items-center justify-between px-5">
-          <Link href="/dashboard" className="flex items-center gap-2.5">
+          <Link href="/admin/dashboard" className="flex items-center gap-2.5">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-500 text-white">
               <Store className="h-5 w-5" />
             </div>

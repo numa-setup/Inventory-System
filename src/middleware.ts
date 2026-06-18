@@ -1,7 +1,7 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-/** Refreshes the Supabase auth session on every request and guards /(admin). */
+/** Refreshes the Supabase auth session on every request and guards /admin/*. */
 export async function middleware(request: NextRequest) {
   let response = NextResponse.next({ request });
 
@@ -34,19 +34,7 @@ export async function middleware(request: NextRequest) {
 
   const { pathname } = request.nextUrl;
   const isAuthRoute = pathname.startsWith("/login");
-  const isAdminRoute =
-    pathname.startsWith("/dashboard") ||
-    pathname.startsWith("/products") ||
-    pathname.startsWith("/categories") ||
-    pathname.startsWith("/stock") ||
-    pathname.startsWith("/purchasing") ||
-    pathname.startsWith("/pos") ||
-    pathname.startsWith("/customers") ||
-    pathname.startsWith("/storefront") ||
-    pathname.startsWith("/discounts") ||
-    pathname.startsWith("/orders") ||
-    pathname.startsWith("/reports") ||
-    pathname.startsWith("/settings");
+  const isAdminRoute = pathname === "/admin" || pathname.startsWith("/admin/");
 
   if (!user && isAdminRoute) {
     const url = request.nextUrl.clone();
@@ -57,7 +45,7 @@ export async function middleware(request: NextRequest) {
 
   if (user && isAuthRoute) {
     const url = request.nextUrl.clone();
-    url.pathname = "/dashboard";
+    url.pathname = "/admin/dashboard";
     return NextResponse.redirect(url);
   }
 

@@ -11,8 +11,8 @@ async function requireManager() {
 }
 
 function revalidate() {
-  revalidatePath("/categories");
-  revalidatePath("/products");
+  revalidatePath("/admin/categories");
+  revalidatePath("/admin/products");
 }
 
 async function nameClashes(

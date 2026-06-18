@@ -28,7 +28,7 @@ export async function quickAddCustomer(name: string, phone?: string | null) {
     .select("id, name, phone")
     .single();
   if (error) return { error: error.message };
-  revalidatePath("/customers");
+  revalidatePath("/admin/customers");
   return { ok: true as const, customer: { id: data.id as string, name: data.name as string, phone: (data.phone as string) ?? null } };
 }
 
@@ -182,9 +182,9 @@ export async function checkoutSale(input: {
     }
   }
 
-  revalidatePath("/stock");
-  revalidatePath("/products");
-  revalidatePath("/dashboard");
+  revalidatePath("/admin/stock");
+  revalidatePath("/admin/products");
+  revalidatePath("/admin/dashboard");
   return {
     ok: true, sale_id: saleId, receipt_no: sale.receipt_no, subtotal, discount, tax, total, profit,
     payments: input.payments,

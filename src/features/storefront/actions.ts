@@ -13,6 +13,6 @@ export async function updateListing(
   const db = createAdminClient();
   const { error } = await db.from("store_listings").update(patch).eq("id", id);
   if (error) return { error: error.message };
-  revalidatePath("/storefront");
+  revalidatePath("/admin/storefront");
   return { ok: true };
 }

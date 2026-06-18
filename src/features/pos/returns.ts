@@ -170,8 +170,8 @@ export async function processReturn(input: {
     await db.from("payments").insert({ sale_id: input.sale_id, method: input.refund_method, amount: -total });
   }
 
-  revalidatePath("/stock");
-  revalidatePath("/dashboard");
-  revalidatePath("/customers");
+  revalidatePath("/admin/stock");
+  revalidatePath("/admin/dashboard");
+  revalidatePath("/admin/customers");
   return { ok: true as const, return_id: returnId, total };
 }

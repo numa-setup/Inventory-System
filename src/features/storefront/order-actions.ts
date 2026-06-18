@@ -105,8 +105,8 @@ export async function placeOrder(input: PlaceOrderInput): Promise<{ ok: true; or
     });
   }
 
-  revalidatePath("/orders");
-  revalidatePath("/dashboard");
+  revalidatePath("/admin/orders");
+  revalidatePath("/admin/dashboard");
   return { ok: true, order_no: orderNo, requires_payment: requiresPayment };
 }
 
@@ -121,7 +121,7 @@ export async function confirmOnlinePayment(orderNo: string, method: OnlineMethod
 
   const res = await creditOrder(orderNo, method);
   if ("error" in res) return res;
-  revalidatePath("/orders");
-  revalidatePath("/dashboard");
+  revalidatePath("/admin/orders");
+  revalidatePath("/admin/dashboard");
   return { ok: true as const, order_no: orderNo };
 }

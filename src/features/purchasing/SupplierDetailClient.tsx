@@ -64,7 +64,7 @@ export function SupplierDetailClient({
         subtitle={supplier.city ?? "Supplier"}
         actions={
           <div className="flex gap-2">
-            <Link href="/purchasing"><Button variant="secondary" size="sm"><ArrowLeft className="h-4 w-4" /> Back</Button></Link>
+            <Link href="/admin/purchasing"><Button variant="secondary" size="sm"><ArrowLeft className="h-4 w-4" /> Back</Button></Link>
             <Button variant="secondary" size="sm" onClick={() => setEdit(true)}><Pencil className="h-4 w-4" /> Edit</Button>
             <Button size="sm" onClick={() => setPay(true)}><Wallet className="h-4 w-4" /> Record Payment</Button>
           </div>

@@ -39,7 +39,7 @@ export async function linkBarcode(variantId: string, productId: string, barcode:
     is_primary: false,
   });
   if (error) return { error: error.message };
-  revalidatePath("/products");
+  revalidatePath("/admin/products");
   return { ok: true };
 }
 
@@ -77,7 +77,7 @@ export async function createSupplier(input: SupplierInput) {
     balance: opening,
   });
   if (error) return { error: error.message };
-  revalidatePath("/purchasing");
+  revalidatePath("/admin/purchasing");
   return { ok: true };
 }
 
@@ -97,8 +97,8 @@ export async function updateSupplier(id: string, input: SupplierInput) {
     notes: input.notes || null,
   }).eq("id", id);
   if (error) return { error: error.message };
-  revalidatePath("/purchasing");
-  revalidatePath(`/purchasing/suppliers/${id}`);
+  revalidatePath("/admin/purchasing");
+  revalidatePath(`/admin/purchasing/suppliers/${id}`);
   return { ok: true };
 }
 
@@ -116,8 +116,8 @@ export async function recordSupplierPayment(input: { supplier_id: string; amount
     reference: input.reference || "Payment", balance_after: newBalance, created_by: user.id,
   });
   await db.from("suppliers").update({ balance: newBalance }).eq("id", input.supplier_id);
-  revalidatePath(`/purchasing/suppliers/${input.supplier_id}`);
-  revalidatePath("/purchasing");
+  revalidatePath(`/admin/purchasing/suppliers/${input.supplier_id}`);
+  revalidatePath("/admin/purchasing");
   return { ok: true };
 }
 
@@ -153,7 +153,7 @@ export async function createPurchaseOrder(input: {
     })),
   );
   if (liErr) return { error: liErr.message };
-  revalidatePath("/purchasing");
+  revalidatePath("/admin/purchasing");
   return { ok: true, po_no: poNo };
 }
 
@@ -162,7 +162,7 @@ export async function setPOStatus(id: string, status: "DRAFT" | "SENT" | "CANCEL
   const db = createAdminClient();
   const { error } = await db.from("purchase_orders").update({ status }).eq("id", id);
   if (error) return { error: error.message };
-  revalidatePath("/purchasing");
+  revalidatePath("/admin/purchasing");
   return { ok: true };
 }
 
@@ -241,10 +241,10 @@ export async function receiveStock(input: {
   // update PO status (partial vs received)
   if (input.po_id) await refreshPOStatus(db, input.po_id);
 
-  revalidatePath("/purchasing");
-  revalidatePath("/stock");
-  revalidatePath("/products");
-  revalidatePath("/dashboard");
+  revalidatePath("/admin/purchasing");
+  revalidatePath("/admin/stock");
+  revalidatePath("/admin/products");
+  revalidatePath("/admin/dashboard");
   return { ok: true, grn_no: grnNo };
 }
 
