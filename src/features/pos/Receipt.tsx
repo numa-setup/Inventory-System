@@ -1,10 +1,14 @@
 "use client";
 
-import { CheckCircle2, Printer, MessageCircle, Plus } from "lucide-react";
+import { useState } from "react";
+import { CheckCircle2, Printer, MessageCircle, Plus, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
-import { receiptInnerHtml, receiptCss, printReceipt, whatsappUrl, type ReceiptData } from "@/lib/receipt";
+import { useToast } from "@/components/ui/Toast";
+import { receiptInnerHtml, receiptCss, printReceipt, type ReceiptData } from "@/lib/receipt";
+import { normalizeWaNumber } from "@/lib/notifications/whatsapp";
+import { sendReceiptWhatsApp } from "./receipt-actions";
 
-/** Post-sale receipt: thermal print / PDF, WhatsApp send, and start a new sale. */
+/** Post-sale receipt: thermal print / PDF, WhatsApp PDF send, and start a new sale. */
 export function Receipt({
   data,
   customerPhone,
@@ -14,6 +18,26 @@ export function Receipt({
   customerPhone?: string | null;
   onClose: () => void;
 }) {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+
+  async function whatsapp() {
+    if (!data) return;
+    setBusy(true);
+    const res = await sendReceiptWhatsApp(data, customerPhone);
+    setBusy(false);
+    if ("error" in res && res.error) return toast(res.error, "error");
+    if (res.sent) {
+      toast("Receipt PDF sent on WhatsApp");
+    } else {
+      // No WhatsApp API key yet — the PDF is stored; share its link manually.
+      const text = `${data.store.name} — receipt ${data.receipt_no}\n${res.url}`;
+      const wa = customerPhone ? `https://wa.me/${normalizeWaNumber(customerPhone)}?text=${encodeURIComponent(text)}` : res.url;
+      window.open(wa, "_blank");
+      toast("Receipt PDF ready — WhatsApp opened with the link");
+    }
+  }
+
   if (!data) return null;
 
   return (
@@ -35,8 +59,8 @@ export function Receipt({
           <Button variant="secondary" onClick={() => printReceipt(data)}>
             <Printer className="h-4 w-4" /> Print / PDF
           </Button>
-          <Button variant="secondary" onClick={() => window.open(whatsappUrl(data, customerPhone), "_blank")}>
-            <MessageCircle className="h-4 w-4" /> WhatsApp
+          <Button variant="secondary" onClick={whatsapp} disabled={busy}>
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageCircle className="h-4 w-4" />} WhatsApp PDF
           </Button>
           <Button className="col-span-2 py-3" onClick={onClose}>
             <Plus className="h-4 w-4" /> New sale
