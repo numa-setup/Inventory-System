@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Search, ShoppingCart, Plus, Minus, Trash2, X, Banknote,
-  Loader2, Package, ScanLine, Camera, CheckCircle2, AlertTriangle, Tag, RotateCcw,
+  Loader2, Package, ScanLine, Camera, CheckCircle2, AlertTriangle, RotateCcw,
   Keyboard, Pause, Clock, Play, WifiOff, RefreshCw,
 } from "lucide-react";
 import { Input } from "@/components/ui/Input";
@@ -47,7 +47,6 @@ interface HeldSale {
   customerId: string;
   discount: string;
   lines: { p: PosProduct; qty: number }[];
-  lineDisc: [string, number][];
 }
 const HELD_KEY = "hgs-held-sales";
 function loadHeld(): HeldSale[] {
@@ -117,7 +116,6 @@ export function PosClient({
   const [q, setQ] = useState("");
   const [cat, setCat] = useState("");
   const [cart, setCart] = useState<Map<string, { p: PosProduct; qty: number }>>(new Map());
-  const [lineDisc, setLineDisc] = useState<Map<string, number>>(new Map());
   const [customerId, setCustomerId] = useState("");
   const [discount, setDiscount] = useState("");
   const [processing, setProcessing] = useState(false);
@@ -242,27 +240,16 @@ export function PosClient({
   // Fires only when no field is focused, so it never double-counts the search box.
   useScanHandler((code) => handleScan(code));
 
-  function setLineDiscount(variantId: string, amount: number) {
-    setLineDisc((m) => {
-      const next = new Map(m);
-      if (amount > 0) next.set(variantId, amount);
-      else next.delete(variantId);
-      return next;
-    });
-  }
-
   const lines = [...cart.values()];
   const { subtotal, discount: disc, tax, total } = computeTotals(
-    lines.map((l) => ({ qty: l.qty, unit_price: l.p.price, discount: lineDisc.get(l.p.variant_id) || 0 })),
+    lines.map((l) => ({ qty: l.qty, unit_price: l.p.price, discount: 0 })),
     Number(discount) || 0,
     store.tax_percent,
   );
   const count = lines.reduce((s, l) => s + l.qty, 0);
-  // Margin guard: any line whose net unit price is below its weighted-avg cost.
-  const belowCost = lines.some((l) => {
-    const d = Math.min(lineDisc.get(l.p.variant_id) || 0, l.p.price * l.qty);
-    return l.p.cost > 0 && (l.p.price * l.qty - d) / l.qty < l.p.cost;
-  });
+  // Margin guard: warn when the bill discount pushes the sale below total cost.
+  const totalCost = lines.reduce((s, l) => s + (l.p.cost > 0 ? l.p.cost * l.qty : 0), 0);
+  const belowCost = totalCost > 0 && subtotal - disc < totalCost;
 
   function openPayment() {
     if (!lines.length) return toast("Cart is empty", "error");
@@ -278,7 +265,7 @@ export function PosClient({
     const payload: QueuedSalePayload = {
       lines: cartLines.map((l) => ({
         variant_id: l.p.variant_id, product_id: l.p.product_id, qty: l.qty, unit_price: l.p.price,
-        discount: Math.min(lineDisc.get(l.p.variant_id) || 0, l.p.price * l.qty),
+        discount: 0,
       })),
       customer_id: customerId || null, payments, discount: Number(discount) || 0,
     };
@@ -319,7 +306,7 @@ export function PosClient({
     setReceiptData(receipt);
     setLastReceipt(receipt); // kept for F6 after the modal closes
     setPaymentOpen(false);
-    setCart(new Map()); setLineDisc(new Map()); setDiscount("");
+    setCart(new Map()); setDiscount("");
   }
 
   async function refreshQueue() { setQueued(await queueCount()); }
@@ -374,11 +361,10 @@ export function PosClient({
       customerId,
       discount,
       lines: lines.map((l) => ({ p: l.p, qty: l.qty })),
-      lineDisc: [...lineDisc.entries()],
     };
     const next = [entry, ...held];
     setHeld(next); saveHeld(next);
-    setCart(new Map()); setLineDisc(new Map()); setDiscount(""); setCustomerId("");
+    setCart(new Map()); setDiscount(""); setCustomerId("");
     toast("Sale held");
     searchRef.current?.focus();
   }
@@ -392,12 +378,10 @@ export function PosClient({
         id: crypto.randomUUID?.() ?? `${Date.now()}`,
         ts: Date.now(), customerId, discount,
         lines: lines.map((l) => ({ p: l.p, qty: l.qty })),
-        lineDisc: [...lineDisc.entries()],
-      }, ...next];
+        }, ...next];
     }
     setHeld(next); saveHeld(next);
     setCart(new Map(entry.lines.map((l) => [l.p.variant_id, l])));
-    setLineDisc(new Map(entry.lineDisc));
     setDiscount(entry.discount);
     setCustomerId(entry.customerId);
     setHeldOpen(false);
@@ -422,7 +406,7 @@ export function PosClient({
         case "Escape":
           if (shortcutsOpen) return setShortcutsOpen(false);
           if (heldOpen) return setHeldOpen(false);
-          if (!anyModal && cart.size) { setCart(new Map()); setLineDisc(new Map()); setDiscount(""); flash(false, "Sale cleared"); }
+          if (!anyModal && cart.size) { setCart(new Map()); setDiscount(""); flash(false, "Sale cleared"); }
           return;
       }
       if (anyModal) return;
@@ -565,7 +549,7 @@ export function PosClient({
       <div className="hidden lg:block">
         <CartPanel
           lines={lines} subtotal={subtotal} discount={discount} setDiscount={setDiscount} total={total} tax={tax} taxPercent={store.tax_percent}
-          lineDisc={lineDisc} setLineDiscount={setLineDiscount} belowCost={belowCost}
+          belowCost={belowCost}
           customers={customers} customerId={customerId} setCustomerId={setCustomerId}
           setQty={setQty} remove={(id) => setQty(id, 0)} processing={processing} onCharge={openPayment} onHold={holdSale}
         />
@@ -591,7 +575,7 @@ export function PosClient({
             </div>
             <CartPanel
               lines={lines} subtotal={subtotal} discount={discount} setDiscount={setDiscount} total={total} tax={tax} taxPercent={store.tax_percent}
-              lineDisc={lineDisc} setLineDiscount={setLineDiscount} belowCost={belowCost}
+              belowCost={belowCost}
               customers={customers} customerId={customerId} setCustomerId={setCustomerId}
               setQty={setQty} remove={(id) => setQty(id, 0)} processing={processing} onCharge={openPayment} onHold={holdSale} embedded
             />
@@ -700,13 +684,13 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
 }
 
 function CartPanel({
-  lines, subtotal, discount, setDiscount, total, tax, taxPercent, lineDisc, setLineDiscount, belowCost,
+  lines, subtotal, discount, setDiscount, total, tax, taxPercent, belowCost,
   customers, customerId, setCustomerId, setQty, remove, processing, onCharge, onHold, embedded,
 }: {
   lines: { p: PosProduct; qty: number }[];
   subtotal: number; discount: string; setDiscount: (v: string) => void; total: number;
   tax: number; taxPercent: number;
-  lineDisc: Map<string, number>; setLineDiscount: (id: string, amount: number) => void; belowCost: boolean;
+  belowCost: boolean;
   customers: { id: string; name: string; phone: string | null }[];
   customerId: string; setCustomerId: (v: string) => void;
   setQty: (id: string, qty: number) => void; remove: (id: string) => void;
@@ -724,38 +708,21 @@ function CartPanel({
           <div className="flex h-full min-h-[120px] flex-col items-center justify-center gap-2 p-6 text-center text-text-tertiary">
             <ShoppingCart className="h-8 w-8" /><p className="text-sm">Tap products to add them</p>
           </div>
-        ) : lines.map((l) => {
-          const gross = l.p.price * l.qty;
-          const d = Math.min(lineDisc.get(l.p.variant_id) || 0, gross);
-          const net = gross - d;
-          const under = l.p.cost > 0 && net / l.qty < l.p.cost;
-          return (
-          <div key={l.p.variant_id} className="border-b border-border/60 px-3 py-2 last:border-0">
-            <div className="flex items-center gap-2">
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-medium text-text-primary">{l.p.name}</div>
-                <div className="text-xs text-text-tertiary">{l.p.label || l.p.sku} · {formatPKR(l.p.price)}</div>
-              </div>
-              <div className="flex items-center gap-1">
-                <button onClick={() => setQty(l.p.variant_id, l.qty - 1)} className="flex h-7 w-7 items-center justify-center rounded-md border border-border text-text-primary"><Minus className="h-3.5 w-3.5" /></button>
-                <span className="tnum w-6 text-center text-sm font-semibold">{l.qty}</span>
-                <button onClick={() => setQty(l.p.variant_id, l.qty + 1)} disabled={l.qty >= l.p.available} className="flex h-7 w-7 items-center justify-center rounded-md border border-border text-text-primary disabled:opacity-40"><Plus className="h-3.5 w-3.5" /></button>
-              </div>
-              <div className="w-16 text-right text-sm font-medium text-text-primary">
-                {d > 0 && <span className="block text-[10px] text-text-tertiary line-through tnum">{formatPKR(gross)}</span>}
-                <span className="tnum">{formatPKR(net)}</span>
-              </div>
-              <button onClick={() => remove(l.p.variant_id)} className="rounded-md p-1 text-text-tertiary hover:text-coral-text"><Trash2 className="h-4 w-4" /></button>
+        ) : lines.map((l) => (
+          <div key={l.p.variant_id} className="flex items-center gap-2 border-b border-border/60 px-3 py-2 last:border-0">
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-sm font-medium text-text-primary">{l.p.name}</div>
+              <div className="text-xs text-text-tertiary">{l.p.label || l.p.sku} · {formatPKR(l.p.price)}</div>
             </div>
-            <div className="mt-1 flex items-center gap-2">
-              <Tag className="h-3 w-3 text-text-tertiary" />
-              <input type="number" value={d || ""} onChange={(e) => setLineDiscount(l.p.variant_id, Number(e.target.value) || 0)}
-                placeholder="Line discount ₨" className="h-6 w-28 rounded-md border border-border bg-surface px-1.5 text-right text-xs text-text-primary focus-visible:border-brand-500 focus-visible:outline-none" />
-              {under && <span className="flex items-center gap-1 text-[11px] font-medium text-coral-text"><AlertTriangle className="h-3 w-3" /> below cost</span>}
+            <div className="flex items-center gap-1">
+              <button onClick={() => setQty(l.p.variant_id, l.qty - 1)} className="flex h-7 w-7 items-center justify-center rounded-md border border-border text-text-primary"><Minus className="h-3.5 w-3.5" /></button>
+              <span className="tnum w-6 text-center text-sm font-semibold">{l.qty}</span>
+              <button onClick={() => setQty(l.p.variant_id, l.qty + 1)} disabled={l.qty >= l.p.available} className="flex h-7 w-7 items-center justify-center rounded-md border border-border text-text-primary disabled:opacity-40"><Plus className="h-3.5 w-3.5" /></button>
             </div>
+            <div className="tnum w-16 text-right text-sm font-medium text-text-primary">{formatPKR(l.p.price * l.qty)}</div>
+            <button onClick={() => remove(l.p.variant_id)} className="rounded-md p-1 text-text-tertiary hover:text-coral-text"><Trash2 className="h-4 w-4" /></button>
           </div>
-          );
-        })}
+        ))}
       </div>
 
       <div className="space-y-3 border-t border-border p-4">
@@ -778,7 +745,7 @@ function CartPanel({
         </div>
         {belowCost && (
           <div className="flex items-center gap-1.5 rounded-lg bg-coral-tile px-2.5 py-1.5 text-xs font-medium text-coral-text">
-            <AlertTriangle className="h-3.5 w-3.5 shrink-0" /> A discounted item is priced below its cost.
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0" /> The bill discount puts this sale below its total cost.
           </div>
         )}
         <div className="flex gap-2">
