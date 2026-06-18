@@ -296,11 +296,14 @@ function IntegrationsSection({ data, isOwner }: { data: SettingsData; isOwner: b
     jazzcash_merchant: data.courier.jazzcash_merchant ?? "", jazzcash_password: data.courier.jazzcash_password ?? "",
     jazzcash_salt: data.courier.jazzcash_salt ?? "", jazzcash_sandbox: data.courier.jazzcash_sandbox === "true",
     easypaisa_store: data.courier.easypaisa_store ?? "", easypaisa_key: data.courier.easypaisa_key ?? "",
+    easypaisa_sandbox: data.courier.easypaisa_sandbox === "true",
     notify_low_stock: Boolean((data.notif_prefs.low_stock as boolean) ?? true),
     notify_new_order: Boolean((data.notif_prefs.new_order as boolean) ?? true),
   });
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement>) => setF((s) => ({ ...s, [k]: e.target.value }));
-  const gatewayLive = Boolean(f.jazzcash_merchant && f.jazzcash_password && f.jazzcash_salt);
+  const jazzcashLive = Boolean(f.jazzcash_merchant && f.jazzcash_password && f.jazzcash_salt);
+  const easypaisaLive = Boolean(f.easypaisa_store && f.easypaisa_key);
+  const gatewayLive = jazzcashLive || easypaisaLive;
   return (
     <Card>
       <CardHeader><CardTitle className="flex items-center gap-2"><Plug className="h-4 w-4" /> Integrations</CardTitle></CardHeader>
@@ -308,7 +311,7 @@ function IntegrationsSection({ data, isOwner }: { data: SettingsData; isOwner: b
         <form onSubmit={(e) => { e.preventDefault(); run(() => updateIntegrations({
           courier: { postex: f.postex, leopards: f.leopards, trax: f.trax },
           resend_key: f.resend, whatsapp_key: f.whatsapp, from_email: f.from_email,
-          payment: { stripe_secret: f.stripe_secret, jazzcash_merchant: f.jazzcash_merchant, jazzcash_password: f.jazzcash_password, jazzcash_salt: f.jazzcash_salt, jazzcash_sandbox: f.jazzcash_sandbox, easypaisa_store: f.easypaisa_store, easypaisa_key: f.easypaisa_key },
+          payment: { stripe_secret: f.stripe_secret, jazzcash_merchant: f.jazzcash_merchant, jazzcash_password: f.jazzcash_password, jazzcash_salt: f.jazzcash_salt, jazzcash_sandbox: f.jazzcash_sandbox, easypaisa_store: f.easypaisa_store, easypaisa_key: f.easypaisa_key, easypaisa_sandbox: f.easypaisa_sandbox },
           notif_prefs: { low_stock: f.notify_low_stock, new_order: f.notify_new_order },
         })); }} className="space-y-4">
           <p className="text-xs font-medium text-text-secondary">Notifications</p>
@@ -324,18 +327,32 @@ function IntegrationsSection({ data, isOwner }: { data: SettingsData; isOwner: b
               {gatewayLive ? "Live" : "Sandbox"}
             </span>
           </div>
-          <p className="text-[11px] text-text-tertiary">JazzCash is wired for live checkout — fill all three fields to go live. Leave blank for sandbox (no real charge). Set <span className="font-mono">NEXT_PUBLIC_APP_URL</span> so JazzCash can return to your site.</p>
+          <p className="text-[11px] text-text-tertiary">JazzCash and Easypaisa are wired for live checkout — fill a provider’s fields to enable it (both can be on; the customer chooses). Leave blank for sandbox (no real charge). Set <span className="font-mono">NEXT_PUBLIC_APP_URL</span> so providers can return to your site.</p>
+
+          <div className="flex items-center gap-2">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-text-tertiary">JazzCash</p>
+            <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-medium ${jazzcashLive ? "bg-green-tile text-green-text" : "bg-surface-2 text-text-tertiary"}`}>{jazzcashLive ? "On" : "Off"}</span>
+          </div>
           <div className="grid gap-3 sm:grid-cols-3">
             <div><Label>JazzCash merchant ID</Label><Input value={f.jazzcash_merchant} disabled={!isOwner} onChange={set("jazzcash_merchant")} /></div>
             <div><Label>JazzCash password</Label><Input value={f.jazzcash_password} disabled={!isOwner} onChange={set("jazzcash_password")} /></div>
             <div><Label>JazzCash integrity salt</Label><Input value={f.jazzcash_salt} disabled={!isOwner} onChange={set("jazzcash_salt")} /></div>
           </div>
           <label className="flex items-center gap-2 text-sm text-text-secondary"><input type="checkbox" checked={f.jazzcash_sandbox} disabled={!isOwner} onChange={(e) => setF((s) => ({ ...s, jazzcash_sandbox: e.target.checked }))} className="h-4 w-4 rounded border-border" /> Use JazzCash sandbox endpoint (for testing)</label>
-          <p className="text-[11px] text-text-tertiary">Stripe / Easypaisa (stored for later — not yet wired for live checkout):</p>
+
+          <div className="flex items-center gap-2 pt-1">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-text-tertiary">Easypaisa</p>
+            <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-medium ${easypaisaLive ? "bg-green-tile text-green-text" : "bg-surface-2 text-text-tertiary"}`}>{easypaisaLive ? "On" : "Off"}</span>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div><Label>Easypaisa store ID</Label><Input value={f.easypaisa_store} disabled={!isOwner} onChange={set("easypaisa_store")} /></div>
+            <div><Label>Easypaisa hash key (16 chars)</Label><Input value={f.easypaisa_key} disabled={!isOwner} onChange={set("easypaisa_key")} /></div>
+          </div>
+          <label className="flex items-center gap-2 text-sm text-text-secondary"><input type="checkbox" checked={f.easypaisa_sandbox} disabled={!isOwner} onChange={(e) => setF((s) => ({ ...s, easypaisa_sandbox: e.target.checked }))} className="h-4 w-4 rounded border-border" /> Use Easypaisa staging endpoint (for testing)</label>
+
+          <p className="text-[11px] text-text-tertiary">Stripe (stored for later — not yet wired for live checkout):</p>
           <div className="grid gap-3 sm:grid-cols-3">
             <div><Label>Stripe secret key</Label><Input value={f.stripe_secret} disabled={!isOwner} onChange={set("stripe_secret")} placeholder="sk_live_..." /></div>
-            <div><Label>Easypaisa store ID</Label><Input value={f.easypaisa_store} disabled={!isOwner} onChange={set("easypaisa_store")} /></div>
-            <div><Label>Easypaisa key</Label><Input value={f.easypaisa_key} disabled={!isOwner} onChange={set("easypaisa_key")} /></div>
           </div>
 
           <p className="border-t border-border pt-3 text-xs font-medium text-text-secondary">Courier API keys</p>

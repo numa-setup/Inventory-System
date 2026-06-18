@@ -1,38 +1,54 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { JazzCashConfig } from "./jazzcash";
+import type { EasypaisaConfig } from "./easypaisa";
 
-// Online payment gateway abstraction. The storefront runs in "sandbox" mode
-// until real provider credentials are added in Settings → Integrations, at which
-// point it flips to "live" and the hosted-checkout / webhook flow takes over.
-// Adding a provider = storing its keys + implementing createIntent/verify below.
+// Online payment gateway abstraction. The storefront runs in "sandbox" mode until
+// real provider credentials are added in Settings → Integrations, at which point it
+// flips to "live". JazzCash and Easypaisa hosted checkout are both wired; when more
+// than one is configured the customer chooses at the payment step.
 
+export type Provider = "jazzcash" | "easypaisa";
 export type GatewayMode = "sandbox" | "live";
 export interface GatewayConfig {
   mode: GatewayMode;
-  provider?: "stripe" | "jazzcash" | "easypaisa";
+  providers: Provider[];
+}
+
+async function courierKeys() {
+  const db = createAdminClient();
+  const { data } = await db.from("settings").select("courier_keys").eq("id", 1).maybeSingle();
+  return (data?.courier_keys ?? {}) as Record<string, string | undefined>;
+}
+
+function appUrl() {
+  return (process.env.NEXT_PUBLIC_APP_URL ?? "").replace(/\/$/, "");
 }
 
 export async function getGatewayConfig(): Promise<GatewayConfig> {
-  const db = createAdminClient();
-  const { data } = await db.from("settings").select("courier_keys").eq("id", 1).maybeSingle();
-  const k = (data?.courier_keys ?? {}) as Record<string, string | undefined>;
-  // JazzCash is the wired live provider (hosted checkout). It needs all three.
-  if (k.jazzcash_merchant && k.jazzcash_password && k.jazzcash_salt) return { mode: "live", provider: "jazzcash" };
-  // Stripe / Easypaisa keys can be stored but stay sandbox until their checkout
-  // + webhook are implemented.
-  return { mode: "sandbox" };
+  const k = await courierKeys();
+  const providers: Provider[] = [];
+  if (k.jazzcash_merchant && k.jazzcash_password && k.jazzcash_salt) providers.push("jazzcash");
+  if (k.easypaisa_store && k.easypaisa_key) providers.push("easypaisa");
+  return { mode: providers.length ? "live" : "sandbox", providers };
 }
 
 export async function getJazzCashConfig(): Promise<JazzCashConfig> {
-  const db = createAdminClient();
-  const { data } = await db.from("settings").select("courier_keys").eq("id", 1).maybeSingle();
-  const k = (data?.courier_keys ?? {}) as Record<string, string | undefined>;
-  const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? "").replace(/\/$/, "");
+  const k = await courierKeys();
   return {
     merchant: k.jazzcash_merchant ?? "",
     password: k.jazzcash_password ?? "",
     salt: k.jazzcash_salt ?? "",
-    returnUrl: `${appUrl}/api/payments/jazzcash/return`,
+    returnUrl: `${appUrl()}/api/payments/jazzcash/return`,
     sandbox: k.jazzcash_sandbox === "true",
+  };
+}
+
+export async function getEasypaisaConfig(): Promise<EasypaisaConfig> {
+  const k = await courierKeys();
+  return {
+    storeId: k.easypaisa_store ?? "",
+    hashKey: k.easypaisa_key ?? "",
+    returnUrl: `${appUrl()}/api/payments/easypaisa/return`,
+    sandbox: k.easypaisa_sandbox === "true",
   };
 }

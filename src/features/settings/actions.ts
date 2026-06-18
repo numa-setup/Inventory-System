@@ -71,7 +71,7 @@ export async function updateSalesSettings(input: {
 export async function updateIntegrations(input: {
   courier: Record<string, string>;
   resend_key?: string; whatsapp_key?: string; from_email?: string;
-  payment?: { stripe_secret?: string; jazzcash_merchant?: string; jazzcash_password?: string; jazzcash_salt?: string; jazzcash_sandbox?: boolean; easypaisa_store?: string; easypaisa_key?: string };
+  payment?: { stripe_secret?: string; jazzcash_merchant?: string; jazzcash_password?: string; jazzcash_salt?: string; jazzcash_sandbox?: boolean; easypaisa_store?: string; easypaisa_key?: string; easypaisa_sandbox?: boolean };
   notif_prefs: Record<string, unknown>;
 }) {
   if (!(await requireOwner())) return { error: "Only the owner can change settings." };
@@ -87,6 +87,7 @@ export async function updateIntegrations(input: {
     jazzcash_sandbox: input.payment?.jazzcash_sandbox ? "true" : "",
     easypaisa_store: input.payment?.easypaisa_store ?? "",
     easypaisa_key: input.payment?.easypaisa_key ?? "",
+    easypaisa_sandbox: input.payment?.easypaisa_sandbox ? "true" : "",
   });
   if (input.from_email !== undefined) await mergeJson(db, "store_info", { from_email: input.from_email });
   await mergeJson(db, "notif_prefs", input.notif_prefs);
