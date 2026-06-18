@@ -8,7 +8,7 @@ import {
   Keyboard, Pause, Clock, Play, WifiOff, RefreshCw,
 } from "lucide-react";
 import { Input } from "@/components/ui/Input";
-import { Select } from "@/components/ui/Select";
+import { CustomerSelect } from "./CustomerSelect";
 import { Button } from "@/components/ui/Button";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { useToast } from "@/components/ui/Toast";
@@ -759,10 +759,7 @@ function CartPanel({
       </div>
 
       <div className="space-y-3 border-t border-border p-4">
-        <Select value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
-          <option value="">Walk-in customer</option>
-          {customers.map((c) => <option key={c.id} value={c.id}>{c.name}{c.phone ? ` · ${c.phone}` : ""}</option>)}
-        </Select>
+        <CustomerSelect customers={customers} value={customerId} onChange={setCustomerId} />
         <div className="flex items-center justify-between text-sm">
           <span className="text-text-secondary">Subtotal</span><span className="tnum text-text-primary">{formatPKR(subtotal)}</span>
         </div>

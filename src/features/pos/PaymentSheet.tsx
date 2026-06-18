@@ -8,6 +8,7 @@ import {
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
+import { CustomerSelect } from "./CustomerSelect";
 import { useToast } from "@/components/ui/Toast";
 import { cn, formatPKR } from "@/lib/utils";
 import { quickAddCustomer, type PayMethod, type PaymentInput } from "./actions";
@@ -142,10 +143,7 @@ export function PaymentSheet({
                 <Button type="button" onClick={addCustomer} className="h-9 shrink-0"><Check className="h-4 w-4" /></Button>
               </div>
             ) : (
-              <Select value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
-                <option value="">Walk-in customer</option>
-                {allCustomers.map((c) => <option key={c.id} value={c.id}>{c.name}{c.phone ? ` · ${c.phone}` : ""}</option>)}
-              </Select>
+              <CustomerSelect customers={allCustomers} value={customerId} onChange={setCustomerId} />
             )}
           </div>
 

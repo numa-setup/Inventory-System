@@ -63,7 +63,11 @@ export default async function PosPage() {
       products={items}
       categories={cats}
       barcodeIndex={barcodeIndex}
-      customers={(customers ?? []).map((c) => ({ id: c.id, name: c.name, phone: c.phone }))}
+      customers={(customers ?? [])
+        // The "Walk-in customer" default lives in the selector itself (empty id),
+        // so drop any seeded walk-in record to avoid showing it twice.
+        .filter((c) => !/^walk[\s-]?in/i.test(c.name))
+        .map((c) => ({ id: c.id, name: c.name, phone: c.phone }))}
       store={store}
       cashierName={user?.fullName ?? "Cashier"}
     />
