@@ -34,7 +34,7 @@ export function AppShell({
             roleLabel={role}
             unreadCount={unreadCount}
           />
-          <main className="mx-auto max-w-[1400px] px-4 py-6 lg:px-8">{children}</main>
+          <main className="mx-auto min-w-0 max-w-[1400px] px-4 py-6 lg:px-8">{children}</main>
         </div>
       </div>
     </ScanProvider>

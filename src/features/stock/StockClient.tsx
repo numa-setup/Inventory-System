@@ -13,7 +13,6 @@ import { Button } from "@/components/ui/Button";
 import { Input, Label, FieldError } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Drawer } from "@/components/ui/Drawer";
-import { DataTable, type Column } from "@/components/ui/DataTable";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { StatTile } from "@/components/ui/StatTile";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -97,40 +96,8 @@ export function StockClient({
   const lowCount = rows.filter((r) => rowStatus(r) === "low_stock").length;
   const outCount = rows.filter((r) => rowStatus(r) === "out_of_stock").length;
 
-  const columns: Column<StockRow>[] = [
-    {
-      key: "name", header: "Product / Variant",
-      cell: (r) => (
-        <div>
-          <div className="font-medium text-text-primary">{r.product_name}</div>
-          <div className="flex items-center gap-2 text-xs text-text-tertiary">
-            <span>{r.label}</span><span>·</span><span>{r.sku}</span>
-          </div>
-        </div>
-      ),
-    },
-    { key: "on_hand", header: "On hand", align: "right", cell: (r) => <span className="tnum">{formatNumber(r.on_hand, 2)}</span> },
-    { key: "reserved", header: "Reserved", align: "right", cell: (r) => <span className="tnum text-text-tertiary">{formatNumber(r.reserved, 2)}</span> },
-    { key: "available", header: "Available", align: "right", cell: (r) => <span className="tnum font-medium text-text-primary">{formatNumber(r.available, 2)}</span> },
-    { key: "avg_cost", header: "Avg cost", align: "right", cell: (r) => <span className="tnum">{formatPKR(r.avg_cost)}</span> },
-    { key: "value", header: "Value", align: "right", cell: (r) => <span className="tnum text-text-primary">{formatPKR(r.value)}</span> },
-    { key: "reorder", header: "Reorder", align: "right", cell: (r) => <span className="tnum text-text-tertiary">{r.reorder_point}</span> },
-    { key: "status", header: "Status", cell: (r) => <StatusPill status={rowStatus(r)} /> },
-    {
-      key: "actions", header: "", align: "right",
-      cell: (r) => (
-        <div className="flex justify-end gap-1">
-          <button onClick={() => setHistory(r)} className="rounded-md p-1.5 text-text-tertiary hover:bg-surface-2" title="Movement history">
-            <History className="h-4 w-4" />
-          </button>
-          <Button size="sm" variant="secondary" onClick={() => setAction({ type: "adjust", row: r })}>Adjust</Button>
-        </div>
-      ),
-    },
-  ];
-
   return (
-    <div>
+    <div className="min-w-0">
       <PageHeader
         title="Stock"
         subtitle="Live on-hand levels per variant — every change is a recorded movement"
@@ -209,10 +176,53 @@ export function StockClient({
         )}
       </Card>
 
-      <Card>
-        <DataTable columns={columns} rows={filtered} empty={
-          <EmptyState icon={Layers} title="No stock matches" description="Try clearing filters or search." />
-        } />
+      <Card className="min-w-0 max-w-full">
+        <table className="w-full table-fixed text-sm">
+          <thead>
+            <tr className="border-b border-border bg-surface-2 text-xs font-semibold uppercase tracking-wide text-text-tertiary">
+              <th className="px-3 py-3 text-left">Product / Variant</th>
+              <th className="w-14 px-2 py-3 text-right sm:w-20">On hand</th>
+              <th className="hidden w-20 px-2 py-3 text-right lg:table-cell">Reserved</th>
+              <th className="w-14 px-2 py-3 text-right sm:w-20">Avail.</th>
+              <th className="hidden w-24 px-2 py-3 text-right md:table-cell">Avg cost</th>
+              <th className="hidden w-24 px-2 py-3 text-right xl:table-cell">Value</th>
+              <th className="hidden w-16 px-2 py-3 text-right xl:table-cell">Reorder</th>
+              <th className="w-20 px-2 py-3 text-left sm:w-28">Status</th>
+              <th className="w-[4.5rem] px-2 py-3 text-right sm:w-28" />
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.length === 0 ? (
+              <tr>
+                <td colSpan={9} className="px-4 py-12">
+                  <EmptyState icon={Layers} title="No stock matches" description="Try clearing filters or search." />
+                </td>
+              </tr>
+            ) : filtered.map((r) => (
+              <tr key={r.id} className="border-b border-border/70 last:border-0">
+                <td className="px-3 py-2.5">
+                  <div className="truncate font-medium text-text-primary" title={r.product_name}>{r.product_name}</div>
+                  <div className="truncate text-xs text-text-tertiary" title={`${r.label} · ${r.sku}`}>{r.label} · {r.sku}</div>
+                </td>
+                <td className="px-2 py-2.5 text-right tnum">{formatNumber(r.on_hand, 2)}</td>
+                <td className="hidden px-2 py-2.5 text-right tnum text-text-tertiary lg:table-cell">{formatNumber(r.reserved, 2)}</td>
+                <td className="px-2 py-2.5 text-right tnum font-medium text-text-primary">{formatNumber(r.available, 2)}</td>
+                <td className="hidden truncate px-2 py-2.5 text-right tnum md:table-cell">{formatPKR(r.avg_cost)}</td>
+                <td className="hidden truncate px-2 py-2.5 text-right tnum text-text-primary xl:table-cell">{formatPKR(r.value)}</td>
+                <td className="hidden px-2 py-2.5 text-right tnum text-text-tertiary xl:table-cell">{r.reorder_point}</td>
+                <td className="px-2 py-2.5"><StatusPill status={rowStatus(r)} /></td>
+                <td className="px-2 py-2.5">
+                  <div className="flex items-center justify-end gap-1">
+                    <button onClick={() => setHistory(r)} className="hidden rounded-md p-1.5 text-text-tertiary hover:bg-surface-2 sm:inline-flex" title="Movement history">
+                      <History className="h-4 w-4" />
+                    </button>
+                    <Button size="sm" variant="secondary" onClick={() => setAction({ type: "adjust", row: r })}>Adjust</Button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </Card>
 
       {action && (
