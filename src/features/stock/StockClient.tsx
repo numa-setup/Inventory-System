@@ -310,11 +310,11 @@ function VariantPicker({
 
 /* ---------------- Unified action drawer ---------------- */
 
-const ACTION_META: Record<ActionType, { title: string; cta: string }> = {
-  in: { title: "Stock In", cta: "Post stock-in" },
-  adjust: { title: "Adjustment", cta: "Post adjustment" },
-  transfer: { title: "Transfer", cta: "Post transfer" },
-  count: { title: "Cycle Count", cta: "Post count" },
+const ACTION_META: Record<ActionType, { title: string; cta: string; desc: string }> = {
+  in: { title: "Stock In", cta: "Add stock", desc: "Receive new stock into the store — increases available quantity and updates the average cost." },
+  adjust: { title: "Adjust — Add or Reduce", cta: "Save adjustment", desc: "Correct the quantity up (found / over-count) or down (damage / loss / theft). Records a movement; stock is never edited directly." },
+  transfer: { title: "Transfer", cta: "Move stock", desc: "Move stock from one location to another. The total quantity stays the same." },
+  count: { title: "Cycle Count", cta: "Save count", desc: "Enter your physical count — the system records a correcting movement so it matches what’s on the shelf." },
 };
 
 function ActionDrawer({
@@ -344,6 +344,22 @@ function ActionDrawer({
 
   const meta = ACTION_META[type];
   const locOnHand = (code: string) => variant?.byLocation.find((l) => l.code === code)?.on_hand ?? 0;
+  const locName = (code: string) => locations.find((l) => l.code === code)?.name ?? code;
+
+  // Plain-language confirmation of the effect before saving.
+  const effect = (() => {
+    if (!variant) return null;
+    const name = `${variant.product_name} · ${variant.label}`;
+    const q = Number(qty);
+    if (type === "in") return q > 0 ? { name, lines: [{ loc: locName(locCode), from: locOnHand(locCode), to: locOnHand(locCode) + q }] } : null;
+    if (type === "adjust") return q > 0 ? { name, lines: [{ loc: locName(locCode), from: locOnHand(locCode), to: direction === "add" ? locOnHand(locCode) + q : locOnHand(locCode) - q }] } : null;
+    if (type === "transfer") return q > 0 ? { name, lines: [
+      { loc: locName(fromCode), from: locOnHand(fromCode), to: locOnHand(fromCode) - q },
+      { loc: locName(toCode), from: locOnHand(toCode), to: locOnHand(toCode) + q },
+    ] } : null;
+    if (type === "count" && counted !== "") return { name, lines: [{ loc: locName(locCode), from: locOnHand(locCode), to: Number(counted) }] };
+    return null;
+  })();
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -399,8 +415,9 @@ function ActionDrawer({
       }
     >
       <form id="stock-action-form" onSubmit={submit} className="space-y-4">
+        <p className="rounded-lg bg-blue-tile/40 px-3 py-2 text-xs text-text-secondary">{meta.desc}</p>
         <div>
-          <Label>Variant</Label>
+          <Label>Product / Variant</Label>
           <VariantPicker rows={rows} value={variant} onChange={setVariant} />
         </div>
 
@@ -484,6 +501,23 @@ function ActionDrawer({
             )}
             <Hint>Creates a correcting movement so the system matches your count.</Hint>
           </>
+        )}
+
+        {effect && (
+          <div className="rounded-lg border border-amber-tile bg-amber-tile/40 px-3 py-2.5">
+            <p className="flex items-center gap-1.5 text-sm font-medium text-text-primary"><AlertTriangle className="h-3.5 w-3.5 text-amber-text" /> Please confirm</p>
+            <div className="mt-1 space-y-0.5 text-sm text-text-secondary">
+              {effect.lines.map((l, i) => (
+                <p key={i}>
+                  This will change <strong className="text-text-primary">{effect.name}</strong>
+                  {effect.lines.length > 1 ? ` at ${l.loc}` : ""} from{" "}
+                  <strong className="tnum text-text-primary">{formatNumber(l.from, 2)}</strong> to{" "}
+                  <strong className={cn("tnum", l.to < l.from ? "text-coral-text" : "text-green-text")}>{formatNumber(l.to, 2)}</strong>
+                  {l.to < 0 && <span className="ml-1 font-medium text-coral-text">(below zero — not allowed)</span>}.
+                </p>
+              ))}
+            </div>
+          </div>
         )}
 
         <FieldError message={err} />
