@@ -539,17 +539,18 @@ function VariantEditDrawer({
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <Label>Sale price (₨)</Label>
+            <Label>Selling price (₨)</Label>
             <Input type="number" value={form.sale_price} onChange={(e) => setForm((f) => ({ ...f, sale_price: e.target.value }))} />
           </div>
           <div>
-            <Label>Standard cost (₨)</Label>
+            <Label>Cost price (₨)</Label>
             <Input type="number" value={form.cost} onChange={(e) => setForm((f) => ({ ...f, cost: e.target.value }))} />
           </div>
         </div>
         <div>
-          <Label>Reorder point</Label>
+          <Label>Reorder at</Label>
           <Input type="number" value={form.reorder_point} onChange={(e) => setForm((f) => ({ ...f, reorder_point: e.target.value }))} />
+          <p className="mt-1 text-xs text-text-tertiary">Get a low-stock alert when on-hand drops to this number.</p>
         </div>
         <p className="rounded-lg bg-surface-2 px-3 py-2 text-[11px] text-text-tertiary">
           On-hand quantity isn’t edited here — it changes only through the Stock area
@@ -738,20 +739,21 @@ function AddProductDrawer({
         </div>
         <div className="grid grid-cols-3 gap-3">
           <div>
-            <Label>Base SKU</Label>
+            <Label>Product code (SKU)</Label>
             <Input value={base.base_sku} onChange={(e) => setBase((b) => ({ ...b, base_sku: e.target.value }))} placeholder="COS-LIP-02" />
           </div>
           <div>
-            <Label>Base price (₨)</Label>
+            <Label>Selling price (₨)</Label>
             <Input type="number" value={base.base_price} onChange={(e) => setBase((b) => ({ ...b, base_price: e.target.value }))} placeholder="0" />
           </div>
           <div>
-            <Label>Unit</Label>
+            <Label>Sold by (unit)</Label>
             <Select value={base.unit} onChange={(e) => setBase((b) => ({ ...b, unit: e.target.value }))}>
               {UNIT_OPTIONS.map((u) => <option key={u} value={u}>{u}</option>)}
             </Select>
           </div>
         </div>
+        <Help>The price customers pay. “Sold by” is how you sell it — each piece (pcs), by weight (kg), etc.</Help>
 
         <div>
           <Label>Description</Label>
@@ -789,7 +791,7 @@ function AddProductDrawer({
           <div className="space-y-3 rounded-xl border border-border p-3">
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label>SKU *</Label>
+                <Label>Product code (SKU) *</Label>
                 <Input value={single.sku} onChange={(e) => setSingle((s) => ({ ...s, sku: e.target.value }))} placeholder="GFT-BOX-02" />
               </div>
               <div>
@@ -797,20 +799,22 @@ function AddProductDrawer({
                 <Input value={single.barcode} onChange={(e) => setSingle((s) => ({ ...s, barcode: e.target.value }))} placeholder="Scan or type" />
               </div>
             </div>
+            <Help>SKU is a unique code for this product. Barcode is the printed number you scan at the till (leave blank to generate one later).</Help>
             <div className="grid grid-cols-3 gap-3">
               <div>
-                <Label>Cost (₨)</Label>
+                <Label>Cost price (₨)</Label>
                 <Input type="number" value={single.cost} onChange={(e) => setSingle((s) => ({ ...s, cost: e.target.value }))} />
               </div>
               <div>
-                <Label>Reorder</Label>
+                <Label>Reorder at</Label>
                 <Input type="number" value={single.reorder} onChange={(e) => setSingle((s) => ({ ...s, reorder: e.target.value }))} />
               </div>
               <div>
-                <Label>Opening qty</Label>
+                <Label>Opening stock</Label>
                 <Input type="number" value={single.opening_qty} onChange={(e) => setSingle((s) => ({ ...s, opening_qty: e.target.value }))} />
               </div>
             </div>
+            <Help>Cost price = what you pay your supplier. Reorder at = stock level that triggers a low-stock alert. Opening stock = how many you have on hand right now.</Help>
           </div>
         ) : (
           <div className="space-y-3">
@@ -852,9 +856,9 @@ function AddProductDrawer({
                       <th className="px-2 py-2 text-left font-semibold">Variant</th>
                       <th className="px-2 py-2 text-left font-semibold">SKU</th>
                       <th className="px-2 py-2 text-left font-semibold">Barcode</th>
-                      <th className="px-2 py-2 text-right font-semibold">Price</th>
-                      <th className="px-2 py-2 text-right font-semibold">Cost</th>
-                      <th className="px-2 py-2 text-right font-semibold">Open</th>
+                      <th className="px-2 py-2 text-right font-semibold">Sell ₨</th>
+                      <th className="px-2 py-2 text-right font-semibold">Cost ₨</th>
+                      <th className="px-2 py-2 text-right font-semibold">Opening</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -879,6 +883,10 @@ function AddProductDrawer({
       </form>
     </Drawer>
   );
+}
+
+function Help({ children }: { children: React.ReactNode }) {
+  return <p className="-mt-1 text-xs leading-relaxed text-text-tertiary">{children}</p>;
 }
 
 /* ---------------- Local image picker (before product exists) ---------------- */
@@ -987,7 +995,7 @@ function EditProductDrawer({
               <Input value={form.brand} onChange={(e) => setForm((f) => ({ ...f, brand: e.target.value }))} />
             </div>
             <div>
-              <Label>Unit</Label>
+              <Label>Sold by (unit)</Label>
               <Select value={form.unit} onChange={(e) => setForm((f) => ({ ...f, unit: e.target.value }))}>
                 {UNIT_OPTIONS.map((u) => <option key={u} value={u}>{u}</option>)}
               </Select>

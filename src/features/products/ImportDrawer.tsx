@@ -99,6 +99,9 @@ export function ImportDrawer({ open, onClose, onDone }: { open: boolean; onClose
             <span className="flex items-center gap-1 rounded-lg bg-green-tile px-2.5 py-1 font-medium text-green-text"><CheckCircle2 className="h-4 w-4" /> {okCount} valid</span>
             {errCount > 0 && <span className="flex items-center gap-1 rounded-lg bg-coral-tile px-2.5 py-1 font-medium text-coral-text"><AlertTriangle className="h-4 w-4" /> {errCount} with errors</span>}
           </div>
+          <p className="text-xs text-text-tertiary">
+            Preview only — nothing is saved yet. Tapping <strong>Import {okCount} valid</strong> adds the {okCount} valid product{okCount === 1 ? "" : "s"}{errCount > 0 ? `; the ${errCount} row${errCount === 1 ? "" : "s"} with errors are skipped` : ""}.
+          </p>
           <div className="overflow-x-auto rounded-xl border border-border">
             <table className="w-full text-xs">
               <thead>

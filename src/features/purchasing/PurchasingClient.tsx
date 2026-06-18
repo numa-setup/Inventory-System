@@ -238,6 +238,7 @@ export function SupplierDrawer({
           <div><Label>Opening balance (₨)</Label><Input type="number" value={String(form.opening_balance ?? "")} onChange={set("opening_balance")} placeholder="0" /></div>
           <div><Label>Bank details</Label><Input value={form.bank_details ?? ""} onChange={set("bank_details")} /></div>
         </div>
+        <p className="-mt-1 text-xs text-text-tertiary">Opening balance = money you already owe this supplier today (leave 0 if none).</p>
         <div><Label>Notes</Label><Input value={form.notes ?? ""} onChange={set("notes")} /></div>
         <FieldError message={err} />
       </form>

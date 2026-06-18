@@ -148,7 +148,7 @@ function AddCustomerDrawer({ open, onClose, onSaved, onError }: {
         <div><Label>Name *</Label><Input value={form.name} onChange={set("name")} placeholder="Customer name" /></div>
         <div><Label>Phone</Label><Input value={form.phone} onChange={set("phone")} placeholder="03xx-xxxxxxx" /></div>
         <div><Label>Address</Label><Input value={form.address} onChange={set("address")} placeholder="Optional" /></div>
-        <div><Label>Credit limit (₨)</Label><Input type="number" value={form.credit_limit} onChange={set("credit_limit")} /></div>
+        <div><Label>Udhaar limit (₨)</Label><Input type="number" value={form.credit_limit} onChange={set("credit_limit")} /><p className="mt-1 text-xs text-text-tertiary">Most this customer is allowed to owe on credit. 0 = cash only.</p></div>
         <FieldError message={err} />
       </form>
     </Drawer>
