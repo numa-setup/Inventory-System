@@ -29,5 +29,7 @@ export default async function ProductsPage() {
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
 
-  return <ProductsClient initialPage={firstPage} categories={catOptions} isOwner={user?.role === "owner"} />;
+  const catTree = cats.map((c) => ({ id: c.id, name: c.name, parent_id: c.parent_id }));
+
+  return <ProductsClient initialPage={firstPage} categories={catOptions} catTree={catTree} isOwner={user?.role === "owner"} />;
 }

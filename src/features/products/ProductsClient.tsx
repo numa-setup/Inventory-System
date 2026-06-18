@@ -27,6 +27,7 @@ import { ImageGallery } from "./ImageGallery";
 export type { ProductRow, VariantRow };
 
 type CatOption = { id: string; name: string; isParent: boolean };
+type CatTreeRow = { id: string; name: string; parent_id: string | null };
 
 function variantTone(v: VariantRow) {
   if (v.available <= 0) return "out_of_stock";
@@ -42,10 +43,12 @@ function productStatus(p: ProductRow) {
 export function ProductsClient({
   initialPage,
   categories,
+  catTree,
   isOwner,
 }: {
   initialPage: ProductsPage;
   categories: CatOption[];
+  catTree: CatTreeRow[];
   isOwner: boolean;
 }) {
   const router = useRouter();
@@ -252,7 +255,7 @@ export function ProductsClient({
       <AddProductDrawer
         open={open}
         onClose={() => setOpen(false)}
-        categories={categories}
+        catTree={catTree}
         onSaved={() => { setOpen(false); toast("Product added"); refreshList(); }}
         onError={(m) => toast(m, "error")}
       />
@@ -549,16 +552,20 @@ function cartesian(lists: string[][]): string[][] {
 }
 
 function AddProductDrawer({
-  open, onClose, categories, onSaved, onError,
+  open, onClose, catTree, onSaved, onError,
 }: {
   open: boolean;
   onClose: () => void;
-  categories: CatOption[];
+  catTree: CatTreeRow[];
   onSaved: () => void;
   onError: (m: string) => void;
 }) {
   const [base, setBase] = useState({ name: "", brand: "", category_id: "", base_sku: "", base_price: "", description: "" });
+  const [parentCat, setParentCat] = useState("");
   const [hasVariants, setHasVariants] = useState(false);
+
+  const topCats = catTree.filter((c) => !c.parent_id);
+  const subCats = catTree.filter((c) => c.parent_id === parentCat);
   const [single, setSingle] = useState({ sku: "", barcode: "", cost: "", reorder: "3", opening_qty: "" });
   const [options, setOptions] = useState<{ name: string; values: string }[]>([{ name: "", values: "" }]);
   const [matrix, setMatrix] = useState<VariantDraft[]>([]);
@@ -567,6 +574,7 @@ function AddProductDrawer({
 
   const reset = () => {
     setBase({ name: "", brand: "", category_id: "", base_sku: "", base_price: "", description: "" });
+    setParentCat("");
     setHasVariants(false);
     setSingle({ sku: "", barcode: "", cost: "", reorder: "3", opening_qty: "" });
     setOptions([{ name: "", values: "" }]);
@@ -676,10 +684,20 @@ function AddProductDrawer({
           </div>
           <div>
             <Label>Category</Label>
-            <Select value={base.category_id} onChange={(e) => setBase((b) => ({ ...b, category_id: e.target.value }))}>
+            <Select value={parentCat} onChange={(e) => { const id = e.target.value; setParentCat(id); setBase((b) => ({ ...b, category_id: id })); }}>
               <option value="">— None —</option>
-              {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              {topCats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </Select>
+            {parentCat && subCats.length > 0 && (
+              <div className="mt-2">
+                <Select value={base.category_id === parentCat ? "" : base.category_id}
+                  onChange={(e) => { const sub = e.target.value; setBase((b) => ({ ...b, category_id: sub || parentCat })); }}>
+                  <option value="">All {topCats.find((c) => c.id === parentCat)?.name} (no sub-category)</option>
+                  {subCats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </Select>
+              </div>
+            )}
+            {topCats.length === 0 && <p className="mt-1 text-xs text-text-tertiary">No categories yet — add them in the Categories screen.</p>}
           </div>
         </div>
         <div className="grid grid-cols-2 gap-3">
