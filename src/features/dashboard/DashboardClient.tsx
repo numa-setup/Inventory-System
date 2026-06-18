@@ -78,7 +78,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
           <CardBody>{data.topProducts.length ? <BarTrend data={data.topProducts} dataKey="revenue" accent="purple" /> : <ChartEmpty />}</CardBody>
         </Card>
         <Card>
-          <CardHeader><div><CardTitle>Payment Type</CardTitle><CardSubtitle>Cash / Udhaar / COD</CardSubtitle></div></CardHeader>
+          <CardHeader><div><CardTitle>Payment Type</CardTitle><CardSubtitle>Cash / Online / Udhaar / COD</CardSubtitle></div></CardHeader>
           <CardBody>{data.paymentMix.length ? <DonutChart data={data.paymentMix} /> : <ChartEmpty />}</CardBody>
         </Card>
         <Card>

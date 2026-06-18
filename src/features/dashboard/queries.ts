@@ -40,7 +40,9 @@ export async function buildDashboard(supabase: Supabase, range: DateRange): Prom
   const saleIds = (sales ?? []).map((s) => s.id);
   const [{ data: items }, { data: pays }] = await Promise.all([
     saleIds.length ? supabase.from("sale_items").select("sale_id, variant_id, qty, line_total").in("sale_id", saleIds) : Promise.resolve({ data: [] as Record<string, unknown>[] }),
-    saleIds.length ? supabase.from("payments").select("method, amount, sale_id").in("sale_id", saleIds) : Promise.resolve({ data: [] as { method: string; amount: number }[] }),
+    // All payments in range — both in-store (sale_id) and online-store (order_id),
+    // so the "Online" segment captures online payments from either channel.
+    supabase.from("payments").select("method, amount").gte("created_at", iso(range.from)).lte("created_at", iso(range.to)),
   ]);
 
   // KPIs
@@ -72,9 +74,14 @@ export async function buildDashboard(supabase: Supabase, range: DateRange): Prom
     prodMap.set(pname, (prodMap.get(pname) ?? 0) + Number(it.line_total));
   }
 
-  // payment mix
+  // payment mix — group the online methods (card/wallet/JazzCash/Easypaisa/bank)
+  // into a single "Online" segment alongside Cash, Udhaar and COD.
   const payMap = new Map<string, number>();
-  for (const p of pays ?? []) payMap.set(p.method, (payMap.get(p.method) ?? 0) + Number(p.amount));
+  for (const p of pays ?? []) {
+    const m = String(p.method).toUpperCase();
+    const bucket = m === "CASH" ? "Cash" : m === "UDHAAR" ? "Udhaar" : m === "COD" ? "COD" : "Online";
+    payMap.set(bucket, (payMap.get(bucket) ?? 0) + Number(p.amount));
+  }
 
   // daily orders
   const ordMap = new Map<string, number>();
@@ -114,7 +121,9 @@ export async function buildDashboard(supabase: Supabase, range: DateRange): Prom
     trend: [...trendMap.values()],
     categoryMix: [...catMap.entries()].map(([name, value]) => ({ name, value: Math.round(value) })).sort((a, b) => b.value - a.value),
     topProducts: [...prodMap.entries()].map(([label, revenue]) => ({ label: label.slice(0, 14), revenue: Math.round(revenue) })).sort((a, b) => b.revenue - a.revenue).slice(0, 8),
-    paymentMix: [...payMap.entries()].map(([name, value]) => ({ name, value: Math.round(value) })),
+    paymentMix: (["Cash", "Online", "Udhaar", "COD"] as const)
+      .filter((name) => payMap.has(name))
+      .map((name) => ({ name, value: Math.round(payMap.get(name) ?? 0) })),
     dailyOrders: [...ordMap.entries()].map(([label, orders]) => ({ label, orders })),
     lowStock: low,
     recentOrders: (orders ?? []).slice(0, 6).map((o) => ({ id: o.id, order_no: o.order_no, customer: o.customer_name, total: Number(o.total), status: String(o.status).toLowerCase(), payment: String(o.payment_type).toLowerCase() })),
