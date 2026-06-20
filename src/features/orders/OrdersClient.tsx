@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Phone, MapPin, Loader2, Check, X } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -50,9 +50,20 @@ const LABEL: Record<string, string> = {
 
 export function OrdersClient({ orders }: { orders: OrderFull[] }) {
   const router = useRouter();
+  const sp = useSearchParams();
   const toast = useToast();
   const [selected, setSelected] = useState<OrderFull | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // Deep link from the dashboard "Recent Orders" rows: ?order=<order_no> opens
+  // that order's detail drawer, then the param is cleared from the URL.
+  const orderParam = sp.get("order");
+  useEffect(() => {
+    if (!orderParam) return;
+    const match = orders.find((o) => o.order_no === orderParam);
+    if (match) setSelected(match);
+    router.replace("/admin/orders");
+  }, [orderParam, orders, router]);
 
   async function act(orderId: string, next: string) {
     setBusy(true);

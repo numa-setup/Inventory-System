@@ -10,7 +10,6 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import { Card, CardHeader, CardTitle, CardSubtitle, CardBody } from "@/components/ui/Card";
 import { StatTile } from "@/components/ui/StatTile";
-import { DataTable, type Column } from "@/components/ui/DataTable";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
@@ -21,16 +20,7 @@ import { formatPKR, formatNumber } from "@/lib/utils";
 import type { DashboardData } from "./queries";
 
 export function DashboardClient({ data }: { data: DashboardData }) {
-  const router = useRouter();
   const live = useRealtimeRefresh();
-
-  const orderCols: Column<DashboardData["recentOrders"][number]>[] = [
-    { key: "order_no", header: "Order", cell: (r) => <span className="font-medium text-text-primary">{r.order_no}</span> },
-    { key: "customer", header: "Customer", cell: (r) => <div className="flex items-center gap-2.5"><Avatar name={r.customer} size={30} /><span className="text-text-primary">{r.customer}</span></div> },
-    { key: "total", header: "Total", align: "right", cell: (r) => <span className="tnum font-medium text-text-primary">{formatPKR(r.total)}</span> },
-    { key: "status", header: "Status", cell: (r) => <StatusPill status={r.status} /> },
-    { key: "payment", header: "Payment", cell: (r) => <StatusPill status={r.payment} /> },
-  ];
 
   return (
     <div className="space-y-5">
@@ -92,13 +82,16 @@ export function DashboardClient({ data }: { data: DashboardData }) {
         <Card>
           <CardHeader className="flex items-center justify-between">
             <CardTitle className="flex items-center gap-2"><PackageX className="h-4 w-4 text-amber-icon" /> Low Stock</CardTitle>
-            <Link href="/admin/purchasing/receive" className="text-xs font-medium text-brand-600 hover:underline">Reorder all</Link>
+            <SeeAll href="/admin/stock?filter=low_stock" />
           </CardHeader>
           {data.lowStock.length === 0 ? <EmptyState icon={Boxes} title="Everything stocked" description="No variant is at its reorder point." /> : (
             <ul className="divide-y divide-border">
               {data.lowStock.map((r) => (
-                <li key={r.id} className="flex items-center justify-between px-4 py-2.5">
-                  <div><div className="text-sm font-medium text-text-primary">{r.name}</div><div className="text-xs text-text-tertiary">{formatNumber(r.available)} left · reorder at {formatNumber(r.reorder)}</div></div>
+                <li key={r.id} className="group flex items-center justify-between gap-2 px-4 py-2.5 transition-colors hover:bg-surface-2">
+                  <Link href={`/admin/products?edit=${r.product_id}`} className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-medium text-text-primary">{r.name}</div>
+                    <div className="text-xs text-text-tertiary">{formatNumber(r.available)} left · reorder at {formatNumber(r.reorder)}</div>
+                  </Link>
                   <Link href="/admin/purchasing/receive"><Button size="sm" variant="secondary">Reorder</Button></Link>
                 </li>
               ))}
@@ -107,25 +100,72 @@ export function DashboardClient({ data }: { data: DashboardData }) {
         </Card>
 
         <Card>
-          <CardHeader><CardTitle>Recent Orders</CardTitle></CardHeader>
-          {data.recentOrders.length === 0 ? <EmptyState icon={ClipboardList} title="No orders yet" description="Online orders will show here." /> : <DataTable columns={orderCols} rows={data.recentOrders} />}
+          <CardHeader className="flex items-center justify-between">
+            <CardTitle>Recent Orders</CardTitle>
+            <SeeAll href="/admin/orders" />
+          </CardHeader>
+          {data.recentOrders.length === 0 ? <EmptyState icon={ClipboardList} title="No orders yet" description="Online orders will show here." /> : (
+            <ul className="divide-y divide-border">
+              {data.recentOrders.map((o) => (
+                <li key={o.id}>
+                  <Link href={`/admin/orders?order=${encodeURIComponent(o.order_no)}`} className="flex items-center justify-between gap-3 px-4 py-2.5 transition-colors hover:bg-surface-2">
+                    <div className="flex min-w-0 items-center gap-2.5">
+                      <Avatar name={o.customer} size={30} />
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-medium text-text-primary">{o.customer}</div>
+                        <div className="text-xs text-text-tertiary">{o.order_no}</div>
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <StatusPill status={o.status} />
+                      <span className="tnum text-sm font-medium text-text-primary">{formatPKR(o.total)}</span>
+                    </div>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
         </Card>
       </div>
 
       {/* lists row 2 */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <MiniList title="Top Customers (Udhaar)" rows={data.topCustomers.map((c) => ({ id: c.id, name: c.name, value: formatPKR(c.outstanding) }))} empty="No outstanding udhaar." />
-        <MiniList title="Top Suppliers (Payable)" rows={data.topSuppliers.map((s) => ({ id: s.id, name: s.name, value: formatPKR(s.payable) }))} empty="No payables." />
+        <MiniList
+          title="Top Customers (Udhaar)"
+          seeAll="/admin/customers"
+          rows={data.topCustomers.map((c) => ({ id: c.id, name: c.name, value: formatPKR(c.outstanding), href: `/admin/customers?customer=${c.id}` }))}
+          empty="No outstanding udhaar."
+        />
+        <MiniList
+          title="Top Suppliers (Payable)"
+          seeAll="/admin/purchasing"
+          rows={data.topSuppliers.map((s) => ({ id: s.id, name: s.name, value: formatPKR(s.payable), href: `/admin/purchasing/suppliers/${s.id}` }))}
+          empty="No payables."
+        />
         <Card>
-          <CardHeader><CardTitle className="flex items-center gap-2"><CalendarClock className="h-4 w-4 text-coral-icon" /> Near Expiry (FEFO)</CardTitle></CardHeader>
+          <CardHeader className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2"><CalendarClock className="h-4 w-4 text-coral-icon" /> Near Expiry (FEFO)</CardTitle>
+            <SeeAll href="/admin/stock" />
+          </CardHeader>
           {data.nearExpiry.length === 0 ? <EmptyState icon={CalendarClock} title="Nothing expiring soon" description="No lots within 90 days." /> : (
             <ul className="divide-y divide-border">
-              {data.nearExpiry.map((l) => (
-                <li key={l.id} className="flex items-center justify-between px-4 py-2.5">
-                  <div><div className="text-sm font-medium text-text-primary">{l.name}</div><div className="text-xs text-text-tertiary">Lot {l.lot}</div></div>
-                  <StatusPill tone={l.days <= 14 ? "coral" : l.days <= 30 ? "amber" : "neutral"}>{l.days}d</StatusPill>
-                </li>
-              ))}
+              {data.nearExpiry.map((l) => {
+                const inner = (
+                  <>
+                    <div className="min-w-0"><div className="truncate text-sm font-medium text-text-primary">{l.name}</div><div className="text-xs text-text-tertiary">Lot {l.lot}</div></div>
+                    <StatusPill tone={l.days <= 14 ? "coral" : l.days <= 30 ? "amber" : "neutral"}>{l.days}d</StatusPill>
+                  </>
+                );
+                return (
+                  <li key={l.id}>
+                    {l.product_id ? (
+                      <Link href={`/admin/products?edit=${l.product_id}`} className="flex items-center justify-between gap-2 px-4 py-2.5 transition-colors hover:bg-surface-2">{inner}</Link>
+                    ) : (
+                      <div className="flex items-center justify-between gap-2 px-4 py-2.5">{inner}</div>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </Card>
@@ -138,16 +178,29 @@ export function DashboardClient({ data }: { data: DashboardData }) {
   );
 }
 
-function MiniList({ title, rows, empty }: { title: string; rows: { id: string; name: string; value: string }[]; empty: string }) {
+function SeeAll({ href }: { href: string }) {
+  return (
+    <Link href={href} className="inline-flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline">
+      See all <ArrowRight className="h-3 w-3" />
+    </Link>
+  );
+}
+
+function MiniList({ title, rows, empty, seeAll }: { title: string; rows: { id: string; name: string; value: string; href: string }[]; empty: string; seeAll: string }) {
   return (
     <Card>
-      <CardHeader><CardTitle>{title}</CardTitle></CardHeader>
+      <CardHeader className="flex items-center justify-between">
+        <CardTitle>{title}</CardTitle>
+        {rows.length > 0 && <SeeAll href={seeAll} />}
+      </CardHeader>
       {rows.length === 0 ? <div className="px-4 py-8 text-center text-sm text-text-tertiary">{empty}</div> : (
         <ul className="divide-y divide-border">
           {rows.map((r) => (
-            <li key={r.id} className="flex items-center justify-between px-4 py-2.5">
-              <div className="flex items-center gap-2.5"><Avatar name={r.name} size={28} /><span className="text-sm text-text-primary">{r.name}</span></div>
-              <span className="tnum text-sm font-medium text-text-primary">{r.value}</span>
+            <li key={r.id}>
+              <Link href={r.href} className="flex items-center justify-between gap-2 px-4 py-2.5 transition-colors hover:bg-surface-2">
+                <div className="flex min-w-0 items-center gap-2.5"><Avatar name={r.name} size={28} /><span className="truncate text-sm text-text-primary">{r.name}</span></div>
+                <span className="tnum shrink-0 text-sm font-medium text-text-primary">{r.value}</span>
+              </Link>
             </li>
           ))}
         </ul>

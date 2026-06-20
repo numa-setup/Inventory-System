@@ -12,11 +12,11 @@ export interface DashboardData {
   topProducts: { label: string; revenue: number }[];
   paymentMix: { name: string; value: number }[];
   dailyOrders: { label: string; orders: number }[];
-  lowStock: { id: string; name: string; available: number; reorder: number }[];
+  lowStock: { id: string; product_id: string; name: string; available: number; reorder: number }[];
   recentOrders: { id: string; order_no: string; customer: string; total: number; status: string; payment: string }[];
   topCustomers: { id: string; name: string; outstanding: number }[];
   topSuppliers: { id: string; name: string; payable: number }[];
-  nearExpiry: { id: string; name: string; lot: string; expiry: string; days: number }[];
+  nearExpiry: { id: string; product_id: string | null; name: string; lot: string; expiry: string; days: number }[];
   rangeLabel: string;
 }
 
@@ -94,7 +94,7 @@ export async function buildDashboard(supabase: Supabase, range: DateRange): Prom
   // low stock (current)
   const lowStock = variants.map((v) => {
     const a = availMap.get(v.variant_id);
-    return { id: v.variant_id, name: `${v.product_name} · ${v.label}`, available: a ? Number(a.available) : 0, reorder: 0 };
+    return { id: v.variant_id, product_id: v.product_id, name: `${v.product_name} · ${v.label}`, available: a ? Number(a.available) : 0, reorder: 0 };
   });
   const { data: vrows } = await supabase.from("product_variants").select("id, reorder_point");
   const reorderMap = new Map((vrows ?? []).map((r) => [r.id, Number(r.reorder_point)]));
@@ -111,7 +111,7 @@ export async function buildDashboard(supabase: Supabase, range: DateRange): Prom
     .map((l) => {
       const v = vMap.get(l.variant_id);
       const days = Math.ceil((new Date(l.expiry_date).getTime() - Date.now()) / 86_400_000);
-      return { id: l.id, name: v ? `${v.product_name} · ${v.label}` : "—", lot: l.lot_number, expiry: l.expiry_date, days };
+      return { id: l.id, product_id: v?.product_id ?? null, name: v ? `${v.product_name} · ${v.label}` : "—", lot: l.lot_number, expiry: l.expiry_date, days };
     })
     .filter((l) => l.days <= 90)
     .sort((a, b) => a.days - b.days).slice(0, 8);

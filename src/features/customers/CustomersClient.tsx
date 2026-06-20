@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Plus, Search, Users, Loader2, Wallet, BookUser } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
@@ -29,10 +29,21 @@ export interface CustomerRow {
 
 export function CustomersClient({ rows }: { rows: CustomerRow[] }) {
   const router = useRouter();
+  const sp = useSearchParams();
   const toast = useToast();
   const [q, setQ] = useState("");
   const [addOpen, setAddOpen] = useState(false);
   const [ledgerOf, setLedgerOf] = useState<CustomerRow | null>(null);
+
+  // Deep link from the dashboard "Top Customers" rows: ?customer=<id> opens that
+  // customer's khata (where a repayment can be recorded), then clears the param.
+  const customerParam = sp.get("customer");
+  useEffect(() => {
+    if (!customerParam) return;
+    const match = rows.find((r) => r.id === customerParam);
+    if (match) setLedgerOf(match);
+    router.replace("/admin/customers");
+  }, [customerParam, rows, router]);
 
   const filtered = useMemo(() => {
     const t = q.trim().toLowerCase();

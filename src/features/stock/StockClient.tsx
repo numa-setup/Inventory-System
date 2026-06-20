@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Search, Loader2, Wallet, PackageX, Layers, AlertTriangle, Info, X,
   PackagePlus, SlidersHorizontal, ArrowLeftRight, ClipboardCheck, History,
@@ -62,10 +62,15 @@ export function StockClient({
   locations: PhysLocation[];
 }) {
   const router = useRouter();
+  const sp = useSearchParams();
   const toast = useToast();
   const [q, setQ] = useState("");
   const [cat, setCat] = useState("");
-  const [status, setStatus] = useState<StatusFilter>("all");
+  // Honor a ?filter=low_stock deep link from the dashboard "Low Stock → See all".
+  const initialFilter = sp.get("filter");
+  const [status, setStatus] = useState<StatusFilter>(
+    initialFilter === "low_stock" || initialFilter === "out_of_stock" || initialFilter === "in_stock" ? initialFilter : "all",
+  );
   const [loc, setLoc] = useState("");
   const [action, setAction] = useState<{ type: ActionType; row?: StockRow } | null>(null);
   const [history, setHistory] = useState<StockRow | null>(null);
