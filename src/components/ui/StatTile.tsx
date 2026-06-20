@@ -33,11 +33,11 @@ export function StatTile({
   const masked = sensitive && !revealed;
 
   return (
-    <Card className={cn("p-5", className)}>
-      <div className="flex items-start justify-between">
+    <Card className={cn("overflow-hidden p-5", className)}>
+      <div className="flex items-start justify-between gap-2">
         <div
           className={cn(
-            "flex h-11 w-11 items-center justify-center rounded-xl",
+            "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl",
             ACCENT_TILE[accent],
           )}
         >
@@ -59,18 +59,18 @@ export function StatTile({
           </span>
         )}
       </div>
-      <div className="mt-4">
+      <div className="mt-4 min-w-0">
         {sensitive ? (
           <button
             type="button"
             onClick={() => setRevealed((v) => !v)}
-            title={masked ? "Click to reveal" : "Click to hide"}
+            title={masked ? "Click to reveal" : String(value)}
             aria-label={masked ? `Reveal ${label}` : `Hide ${label}`}
-            className="group flex items-center gap-2 -ml-1 rounded-lg px-1 py-0.5 transition hover:bg-surface-2"
+            className="group -ml-1 flex w-full max-w-full items-center gap-2 rounded-lg px-1 py-0.5 transition hover:bg-surface-2"
           >
             <span
               className={cn(
-                "tnum font-heading text-2xl font-bold text-text-primary",
+                "tnum min-w-0 flex-1 truncate text-left font-heading text-xl font-bold text-text-primary sm:text-2xl",
                 masked && "select-none tracking-wider text-text-tertiary",
               )}
             >
@@ -83,12 +83,12 @@ export function StatTile({
             )}
           </button>
         ) : (
-          <div className="tnum font-heading text-2xl font-bold text-text-primary">
+          <div className="tnum truncate font-heading text-xl font-bold text-text-primary sm:text-2xl" title={String(value)}>
             {value}
           </div>
         )}
-        <div className="mt-1 text-sm text-text-secondary">{label}</div>
-        {hint && <div className="mt-0.5 text-xs text-text-tertiary">{hint}</div>}
+        <div className="mt-1 truncate text-sm text-text-secondary">{label}</div>
+        {hint && <div className="mt-0.5 truncate text-xs text-text-tertiary">{hint}</div>}
       </div>
     </Card>
   );
