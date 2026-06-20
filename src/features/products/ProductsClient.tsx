@@ -663,8 +663,6 @@ function AddProductDrawer({
   const [hasVariants, setHasVariants] = useState(false);
   const [images, setImages] = useState<File[]>([]);
 
-  const topCats = catTree.filter((c) => !c.parent_id);
-  const subCats = catTree.filter((c) => c.parent_id === parentCat);
   const [single, setSingle] = useState({ sku: "", barcode: "", cost: "", reorder: reorderDefault, opening_qty: "", disc_type: "" as DiscType, disc_value: "" });
   const [options, setOptions] = useState<{ name: string; values: string }[]>([{ name: "", values: "" }]);
   const [matrix, setMatrix] = useState<VariantDraft[]>([]);
@@ -785,66 +783,46 @@ function AddProductDrawer({
       }
     >
       <form id="add-product-form" onSubmit={submit} className="space-y-4">
-        <div>
-          <Label>Product name *</Label>
-          <Input value={base.name} onChange={(e) => setBase((b) => ({ ...b, name: e.target.value }))} placeholder="e.g. Maybelline SuperStay Lipstick" />
-        </div>
-        <div className="grid grid-cols-2 gap-3">
+        {/* 1 · Basics */}
+        <Section title="Basics" hint="What the product is and where it lives in your catalogue.">
           <div>
-            <Label>Brand</Label>
-            <Input value={base.brand} onChange={(e) => setBase((b) => ({ ...b, brand: e.target.value }))} placeholder="e.g. Maybelline" />
+            <Label>Product name *</Label>
+            <Input value={base.name} onChange={(e) => setBase((b) => ({ ...b, name: e.target.value }))} placeholder="e.g. Maybelline SuperStay Lipstick" />
           </div>
-          <div>
-            <Label>Category</Label>
-            <Select value={parentCat} onChange={(e) => { const id = e.target.value; setParentCat(id); setBase((b) => ({ ...b, category_id: id })); }}>
-              <option value="">— None —</option>
-              {topCats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </Select>
-            {parentCat && subCats.length > 0 && (
-              <div className="mt-2">
-                <Select value={base.category_id === parentCat ? "" : base.category_id}
-                  onChange={(e) => { const sub = e.target.value; setBase((b) => ({ ...b, category_id: sub || parentCat })); }}>
-                  <option value="">All {topCats.find((c) => c.id === parentCat)?.name} (no sub-category)</option>
-                  {subCats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </Select>
-              </div>
-            )}
-            {topCats.length === 0 && <p className="mt-1 text-xs text-text-tertiary">No categories yet — add them in the Categories screen.</p>}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Brand</Label>
+              <Input value={base.brand} onChange={(e) => setBase((b) => ({ ...b, brand: e.target.value }))} placeholder="e.g. Maybelline" />
+            </div>
+            <div>
+              <Label>Sold by (unit)</Label>
+              <Select value={base.unit} onChange={(e) => setBase((b) => ({ ...b, unit: e.target.value }))}>
+                {UNIT_OPTIONS.map((u) => <option key={u} value={u}>{u}</option>)}
+              </Select>
+            </div>
           </div>
-        </div>
-        <div className="grid grid-cols-3 gap-3">
-          <div>
-            <Label>Product code (SKU)</Label>
-            <Input value={base.base_sku} onChange={(e) => setBase((b) => ({ ...b, base_sku: e.target.value }))} placeholder="COS-LIP-02" />
-          </div>
-          <div>
-            <Label>Selling price (₨)</Label>
-            <Input type="number" value={base.base_price} onChange={(e) => setBase((b) => ({ ...b, base_price: e.target.value }))} placeholder="0" />
-          </div>
-          <div>
-            <Label>Sold by (unit)</Label>
-            <Select value={base.unit} onChange={(e) => setBase((b) => ({ ...b, unit: e.target.value }))}>
-              {UNIT_OPTIONS.map((u) => <option key={u} value={u}>{u}</option>)}
-            </Select>
-          </div>
-        </div>
-        <Help>The price customers pay. “Sold by” is how you sell it — each piece (pcs), by weight (kg), etc.</Help>
-
-        <div>
-          <Label>Description</Label>
-          <textarea
-            value={base.description}
-            onChange={(e) => setBase((b) => ({ ...b, description: e.target.value }))}
-            rows={2}
-            placeholder="Short description (shown on the storefront)"
-            className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus-visible:border-brand-500 focus-visible:outline-none"
+          <CategoryPicker
+            catTree={catTree}
+            parentCat={parentCat}
+            setParentCat={setParentCat}
+            categoryId={base.category_id}
+            setCategoryId={(v) => setBase((b) => ({ ...b, category_id: v }))}
           />
-        </div>
-
-        <div>
-          <Label>Photos</Label>
-          <ImageFilePicker files={images} onChange={setImages} />
-        </div>
+          <div>
+            <Label>Description</Label>
+            <textarea
+              value={base.description}
+              onChange={(e) => setBase((b) => ({ ...b, description: e.target.value }))}
+              rows={2}
+              placeholder="Short description (shown on the storefront)"
+              className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus-visible:border-brand-500 focus-visible:outline-none"
+            />
+          </div>
+          <div>
+            <Label>Product image(s)</Label>
+            <ImageFilePicker files={images} onChange={setImages} />
+          </div>
+        </Section>
 
         {/* variant toggle */}
         <div className="flex items-center justify-between rounded-xl border border-border bg-surface-2 p-3">
@@ -863,47 +841,77 @@ function AddProductDrawer({
         </div>
 
         {!hasVariants ? (
-          <div className="space-y-3 rounded-xl border border-border p-3">
+          <>
+            {/* 2 · Pricing */}
+            <Section title="Pricing" hint="Cost is what you pay; selling price is what the customer pays.">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label>Selling price (₨)</Label>
+                  <Input type="number" value={base.base_price} onChange={(e) => setBase((b) => ({ ...b, base_price: e.target.value }))} placeholder="0" />
+                </div>
+                <div>
+                  <Label>Cost price (₨)</Label>
+                  <Input type="number" value={single.cost} onChange={(e) => setSingle((s) => ({ ...s, cost: e.target.value }))} placeholder="0" />
+                </div>
+              </div>
+              <DiscountField
+                type={single.disc_type}
+                value={single.disc_value}
+                price={Number(base.base_price) || 0}
+                onType={(v) => setSingle((s) => ({ ...s, disc_type: v }))}
+                onValue={(v) => setSingle((s) => ({ ...s, disc_value: v }))}
+              />
+              <Help>The default discount auto-fills at the till — the cashier can change or remove it per sale.</Help>
+            </Section>
+
+            {/* 3 · Stock */}
+            <Section title="Stock" hint="How many you have now, and when to warn you it&rsquo;s running low.">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label>Opening stock (qty)</Label>
+                  <Input type="number" value={single.opening_qty} onChange={(e) => setSingle((s) => ({ ...s, opening_qty: e.target.value }))} placeholder="0" />
+                </div>
+                <div>
+                  <Label>Low-stock alert at (qty)</Label>
+                  <Input type="number" value={single.reorder} onChange={(e) => setSingle((s) => ({ ...s, reorder: e.target.value }))} />
+                </div>
+              </div>
+              <Help>This product&rsquo;s own threshold — you&rsquo;re warned when on-hand drops to it.</Help>
+            </Section>
+
+            {/* 4 · Identifiers */}
+            <Section title="Identifiers" hint="Codes used to find and scan the product.">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label>Product code (SKU) *</Label>
+                  <Input value={single.sku} onChange={(e) => setSingle((s) => ({ ...s, sku: e.target.value }))} placeholder="GFT-BOX-02" />
+                </div>
+                <div>
+                  <Label className="flex items-center gap-1.5"><Barcode className="h-3.5 w-3.5" /> Barcode</Label>
+                  <Input value={single.barcode} onChange={(e) => setSingle((s) => ({ ...s, barcode: e.target.value }))} placeholder="Scan or type" />
+                </div>
+              </div>
+              <Help>SKU is a unique internal code. Barcode is the printed number you scan at the till (leave blank to generate one later).</Help>
+            </Section>
+          </>
+        ) : (
+          <Section title="Variants" hint="Define options, generate the combinations, then set each one's details.">
+            {/* base price + sku used as defaults for the generated variants */}
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label>Product code (SKU) *</Label>
-                <Input value={single.sku} onChange={(e) => setSingle((s) => ({ ...s, sku: e.target.value }))} placeholder="GFT-BOX-02" />
+                <Label>Default selling price (₨)</Label>
+                <Input type="number" value={base.base_price} onChange={(e) => setBase((b) => ({ ...b, base_price: e.target.value }))} placeholder="0" />
               </div>
               <div>
-                <Label className="flex items-center gap-1.5"><Barcode className="h-3.5 w-3.5" /> Barcode</Label>
-                <Input value={single.barcode} onChange={(e) => setSingle((s) => ({ ...s, barcode: e.target.value }))} placeholder="Scan or type" />
+                <Label>Base SKU</Label>
+                <Input value={base.base_sku} onChange={(e) => setBase((b) => ({ ...b, base_sku: e.target.value }))} placeholder="COS-LIP" />
               </div>
             </div>
-            <Help>SKU is a unique code for this product. Barcode is the printed number you scan at the till (leave blank to generate one later).</Help>
-            <div className="grid grid-cols-3 gap-3">
-              <div>
-                <Label>Cost price (₨)</Label>
-                <Input type="number" value={single.cost} onChange={(e) => setSingle((s) => ({ ...s, cost: e.target.value }))} />
-              </div>
-              <div>
-                <Label>Low-stock alert at (qty)</Label>
-                <Input type="number" value={single.reorder} onChange={(e) => setSingle((s) => ({ ...s, reorder: e.target.value }))} />
-              </div>
-              <div>
-                <Label>Opening stock</Label>
-                <Input type="number" value={single.opening_qty} onChange={(e) => setSingle((s) => ({ ...s, opening_qty: e.target.value }))} />
-              </div>
-            </div>
-            <Help>Cost price = what you pay your supplier. Low-stock alert at = this product&rsquo;s own threshold — you&rsquo;re warned when on-hand drops to it. Opening stock = how many you have on hand right now.</Help>
-            <DiscountField
-              type={single.disc_type}
-              value={single.disc_value}
-              price={Number(base.base_price) || 0}
-              onType={(v) => setSingle((s) => ({ ...s, disc_type: v }))}
-              onValue={(v) => setSingle((s) => ({ ...s, disc_value: v }))}
-            />
-            <Help>The standard discount for this product. It auto-fills at the till — the cashier can still change or remove it per sale.</Help>
-          </div>
-        ) : (
-          <div className="space-y-3">
+            <Help>Each generated variant starts from these, then you fine-tune per row below.</Help>
+
             {/* options builder */}
-            <div className="rounded-xl border border-border p-3">
-              <p className="mb-2 text-xs font-medium text-text-secondary">Options (up to 2)</p>
+            <div className="rounded-xl border border-border bg-surface-2/40 p-3">
+              <p className="mb-2 text-xs font-medium text-text-secondary">Step 1 — define options (up to 2, e.g. Size, Shade)</p>
               {options.map((o, i) => (
                 <div key={i} className="mb-2 grid grid-cols-[1fr_1.6fr] gap-2">
                   <Input
@@ -933,6 +941,7 @@ function AddProductDrawer({
             {/* matrix */}
             {matrix.length > 0 && (
               <div className="overflow-x-auto rounded-xl border border-border">
+                <p className="border-b border-border bg-surface-2/60 px-2 py-1.5 text-xs font-medium text-text-secondary">Step 2 — set each variant&rsquo;s details</p>
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="border-b border-border bg-surface-2 text-text-tertiary">
@@ -972,7 +981,7 @@ function AddProductDrawer({
                 </table>
               </div>
             )}
-          </div>
+          </Section>
         )}
 
         <FieldError message={err} />
@@ -983,6 +992,58 @@ function AddProductDrawer({
 
 function Help({ children }: { children: React.ReactNode }) {
   return <p className="-mt-1 text-xs leading-relaxed text-text-tertiary">{children}</p>;
+}
+
+/** A titled group of fields — keeps the long product form scannable. */
+function Section({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
+  return (
+    <section className="rounded-xl border border-border p-3.5">
+      <div className="mb-3">
+        <h3 className="font-heading text-sm font-semibold text-text-primary">{title}</h3>
+        {hint && <p className="text-xs text-text-tertiary">{hint}</p>}
+      </div>
+      <div className="space-y-3">{children}</div>
+    </section>
+  );
+}
+
+/** Category + Sub-category selector. Lists admin-created categories; the
+ *  sub-category list is filtered by the chosen parent. Shared by Add & Edit. */
+function CategoryPicker({
+  catTree, parentCat, setParentCat, categoryId, setCategoryId,
+}: {
+  catTree: CatTreeRow[];
+  parentCat: string; setParentCat: (v: string) => void;
+  categoryId: string; setCategoryId: (v: string) => void;
+}) {
+  const topCats = catTree.filter((c) => !c.parent_id);
+  const subCats = catTree.filter((c) => c.parent_id === parentCat);
+  return (
+    <div className="grid grid-cols-2 gap-3">
+      <div>
+        <Label>Category</Label>
+        <Select
+          value={parentCat}
+          onChange={(e) => { const id = e.target.value; setParentCat(id); setCategoryId(id); }}
+        >
+          <option value="">— None —</option>
+          {topCats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </Select>
+        {topCats.length === 0 && <p className="mt-1 text-xs text-text-tertiary">No categories yet — add them in the Categories screen.</p>}
+      </div>
+      <div>
+        <Label>Sub-category</Label>
+        <Select
+          value={categoryId === parentCat ? "" : categoryId}
+          onChange={(e) => setCategoryId(e.target.value || parentCat)}
+          disabled={!parentCat || subCats.length === 0}
+        >
+          <option value="">{!parentCat ? "Pick a category first" : subCats.length ? "— None —" : "No sub-categories"}</option>
+          {subCats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </Select>
+      </div>
+    </div>
+  );
 }
 
 /* ---------------- Local image picker (before product exists) ---------------- */
@@ -1047,9 +1108,6 @@ function EditProductDrawer({
     });
   }
 
-  const topCats = catTree.filter((c) => !c.parent_id);
-  const subCats = catTree.filter((c) => c.parent_id === parentCat);
-
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!product) return;
@@ -1081,57 +1139,51 @@ function EditProductDrawer({
     >
       {product && (
         <form id="edit-product-form" onSubmit={submit} className="space-y-4">
-          <div>
-            <Label>Product name *</Label>
-            <Input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
+          <Section title="Basics" hint="Name, brand, category and how it&rsquo;s sold.">
             <div>
-              <Label>Brand</Label>
-              <Input value={form.brand} onChange={(e) => setForm((f) => ({ ...f, brand: e.target.value }))} />
+              <Label>Product name *</Label>
+              <Input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
             </div>
-            <div>
-              <Label>Sold by (unit)</Label>
-              <Select value={form.unit} onChange={(e) => setForm((f) => ({ ...f, unit: e.target.value }))}>
-                {UNIT_OPTIONS.map((u) => <option key={u} value={u}>{u}</option>)}
-              </Select>
-            </div>
-          </div>
-          <div>
-            <Label>Category</Label>
-            <Select value={parentCat} onChange={(e) => { const id = e.target.value; setParentCat(id); setForm((f) => ({ ...f, category_id: id })); }}>
-              <option value="">— None —</option>
-              {topCats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </Select>
-            {parentCat && subCats.length > 0 && (
-              <div className="mt-2">
-                <Select value={form.category_id === parentCat ? "" : form.category_id}
-                  onChange={(e) => { const sub = e.target.value; setForm((f) => ({ ...f, category_id: sub || parentCat })); }}>
-                  <option value="">All {topCats.find((c) => c.id === parentCat)?.name} (no sub-category)</option>
-                  {subCats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Brand</Label>
+                <Input value={form.brand} onChange={(e) => setForm((f) => ({ ...f, brand: e.target.value }))} />
+              </div>
+              <div>
+                <Label>Sold by (unit)</Label>
+                <Select value={form.unit} onChange={(e) => setForm((f) => ({ ...f, unit: e.target.value }))}>
+                  {UNIT_OPTIONS.map((u) => <option key={u} value={u}>{u}</option>)}
                 </Select>
               </div>
-            )}
-          </div>
-          <div>
-            <Label>Description</Label>
-            <textarea value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} rows={2}
-              className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus-visible:border-brand-500 focus-visible:outline-none" />
-          </div>
+            </div>
+            <CategoryPicker
+              catTree={catTree}
+              parentCat={parentCat}
+              setParentCat={setParentCat}
+              categoryId={form.category_id}
+              setCategoryId={(v) => setForm((f) => ({ ...f, category_id: v }))}
+            />
+            <div>
+              <Label>Description</Label>
+              <textarea value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} rows={2}
+                className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus-visible:border-brand-500 focus-visible:outline-none" />
+            </div>
+          </Section>
 
-          <label className="flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2.5 text-sm">
-            <input type="checkbox" checked={form.active} onChange={(e) => setForm((f) => ({ ...f, active: e.target.checked }))} className="h-4 w-4 rounded border-border" />
-            <span className="text-text-primary">Active</span>
-            <span className="text-text-tertiary">— unchecking archives it (hidden from sale &amp; storefront, history kept)</span>
-          </label>
-
-          <div>
-            <Label>Photos</Label>
+          <Section title="Image(s)">
             <ImageGallery productId={product.id} />
-          </div>
+          </Section>
+
+          <Section title="Status">
+            <label className="flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2.5 text-sm">
+              <input type="checkbox" checked={form.active} onChange={(e) => setForm((f) => ({ ...f, active: e.target.checked }))} className="h-4 w-4 rounded border-border" />
+              <span className="text-text-primary">Active</span>
+              <span className="text-text-tertiary">— unchecking archives it (hidden from sale &amp; storefront, history kept)</span>
+            </label>
+          </Section>
 
           <p className="rounded-lg bg-surface-2 px-3 py-2 text-[11px] text-text-tertiary">
-            Per-variant SKU, barcode, cost, price and reorder are edited from each variant’s <strong>Edit</strong> button. On-hand quantity changes only through the Stock area.
+            Pricing, default discount, SKU, barcode, cost and low-stock are edited per variant from each variant&rsquo;s <strong>Edit</strong> button. On-hand quantity changes only through the Stock area.
           </p>
         </form>
       )}
