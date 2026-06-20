@@ -18,6 +18,10 @@ const nextConfig = {
     staleTimes: { dynamic: 30, static: 180 },
     // Tree-shake heavy barrels to per-symbol imports.
     optimizePackageImports: ["lucide-react", "date-fns", "recharts"],
+    // Product/variant photo uploads go through server actions as multipart form
+    // data. The default body limit is 1 MB, which silently rejected real phone
+    // photos (2–5 MB) — raise it so image uploads actually succeed.
+    serverActions: { bodySizeLimit: "10mb" },
   },
 };
 

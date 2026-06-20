@@ -8,7 +8,7 @@ import type { StoreProduct, StoreVariant } from "@/lib/storefront";
 
 export function AddToBag({ product, variants }: { product: StoreProduct; variants: StoreVariant[] }) {
   const { add } = useCart();
-  const sellable = variants.length ? variants : [{ variant_id: product.product_id, label: "Default", sku: "", price: product.price, available: product.available }];
+  const sellable = variants.length ? variants : [{ variant_id: product.product_id, label: "Default", sku: "", price: product.price, available: product.available, image_url: product.image_url }];
   const showVariants = product.has_variants && variants.length > 1;
   const [variantId, setVariantId] = useState(sellable[0].variant_id);
   const [qty, setQty] = useState(1);
@@ -28,7 +28,7 @@ export function AddToBag({ product, variants }: { product: StoreProduct; variant
         variantLabel: showVariants ? selected.label : null,
         price: selected.price,
         available: selected.available,
-        image: product.images[0] ?? product.image_url,
+        image: selected.image_url ?? product.images[0] ?? product.image_url,
         category: product.category_name,
         unit: product.base_unit,
       },

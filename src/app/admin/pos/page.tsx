@@ -12,7 +12,7 @@ export default async function PosPage() {
   const [{ data: catalog }, { data: customers }, { data: categories }, { data: settings }, user] = await Promise.all([
     supabase
       .from("catalog_index")
-      .select("variant_id, product_id, product_name, has_variants, sku, label, barcode, price, avg_cost, cost, disc_type, disc_value, reorder_point, category_id, available")
+      .select("variant_id, product_id, product_name, has_variants, sku, label, barcode, price, avg_cost, cost, disc_type, disc_value, reorder_point, category_id, available, image_url")
       .eq("active", true)
       .order("product_name"),
     supabase.from("customers").select("id, name, phone").order("name"),
@@ -49,6 +49,7 @@ export default async function PosPage() {
     reorder_point: Number(v.reorder_point) || 0,
     available: Number(v.available),
     category_id: v.category_id,
+    image_url: (v.image_url as string) ?? null,
   }));
 
   // top-level categories present in the catalogue, for the filter chips

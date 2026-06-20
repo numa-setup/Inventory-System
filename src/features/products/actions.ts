@@ -440,6 +440,51 @@ export async function setPrimaryProductImage(productId: string, url: string) {
   return { ok: true as const, images };
 }
 
+// ---- Per-variant image (optional) ----------------------------------------
+// A variant may have its own photo; when absent the parent product image is
+// used. Stored on product_variants.image_url; catalog_index already coalesces
+// variant -> product so POS / storefront pick the right picture automatically.
+
+/** Upload (replace) a single variant photo. */
+export async function uploadVariantImage(variantId: string, formData: FormData) {
+  if (!(await requireManager())) return { error: "Not authorized." };
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) return { error: "No image selected." };
+  if (!file.type.startsWith("image/")) return { error: "That file isn’t an image." };
+  if (file.size > 5_242_880) return { error: "Image must be under 5 MB." };
+
+  const db = createAdminClient();
+  const ext = (file.name.split(".").pop() || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const path = `variants/${variantId}/${Date.now()}-${Math.random().toString(36).slice(2, 7)}.${ext}`;
+  const { error: upErr } = await db.storage.from(IMAGE_BUCKET).upload(path, file, { upsert: true, contentType: file.type, cacheControl: "31536000" });
+  if (upErr) return { error: "Upload failed — please try again." };
+  const url = db.storage.from(IMAGE_BUCKET).getPublicUrl(path).data.publicUrl;
+
+  // Remove the previous variant photo (storage) before pointing at the new one.
+  const { data: prev } = await db.from("product_variants").select("image_url").eq("id", variantId).maybeSingle();
+  const oldPath = (prev?.image_url as string | null)?.split(`/${IMAGE_BUCKET}/`)[1];
+
+  const { error } = await db.from("product_variants").update({ image_url: url }).eq("id", variantId);
+  if (error) return { error: error.message };
+  if (oldPath) await db.storage.from(IMAGE_BUCKET).remove([oldPath]);
+
+  revalidateProductSurfaces();
+  return { ok: true as const, image_url: url };
+}
+
+/** Remove a variant's own photo (falls back to the product image again). */
+export async function removeVariantImage(variantId: string) {
+  if (!(await requireManager())) return { error: "Not authorized." };
+  const db = createAdminClient();
+  const { data: prev } = await db.from("product_variants").select("image_url").eq("id", variantId).maybeSingle();
+  const oldPath = (prev?.image_url as string | null)?.split(`/${IMAGE_BUCKET}/`)[1];
+  const { error } = await db.from("product_variants").update({ image_url: null }).eq("id", variantId);
+  if (error) return { error: error.message };
+  if (oldPath) await db.storage.from(IMAGE_BUCKET).remove([oldPath]);
+  revalidateProductSurfaces();
+  return { ok: true as const };
+}
+
 /** Bulk set the sale price on every variant of a product. */
 export async function bulkSetPrice(productId: string, salePrice: number) {
   if (!(await requireManager())) return { error: "Not authorized." };

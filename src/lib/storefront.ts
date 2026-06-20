@@ -26,6 +26,8 @@ export interface StoreVariant {
   sku: string;
   price: number;
   available: number;
+  /** Effective image (variant photo, else product photo). */
+  image_url: string | null;
 }
 
 export interface StoreCategory {
@@ -112,11 +114,11 @@ export async function getProductVariants(productId: string): Promise<StoreVarian
   const db = createAdminClient();
   const { data } = await db
     .from("catalog_index")
-    .select("variant_id, label, sku, price, available")
+    .select("variant_id, label, sku, price, available, image_url")
     .eq("product_id", productId)
     .eq("active", true);
   return (data ?? [])
-    .map((v) => ({ variant_id: v.variant_id as string, label: v.label as string, sku: v.sku as string, price: Number(v.price), available: Number(v.available) }))
+    .map((v) => ({ variant_id: v.variant_id as string, label: v.label as string, sku: v.sku as string, price: Number(v.price), available: Number(v.available), image_url: (v.image_url as string) ?? null }))
     .sort((a, b) => a.label.localeCompare(b.label));
 }
 

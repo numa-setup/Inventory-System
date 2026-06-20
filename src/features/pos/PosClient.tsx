@@ -81,6 +81,8 @@ export interface PosProduct {
   reorder_point: number;
   available: number;
   category_id: string | null;
+  /** Effective image (variant photo, else product photo). */
+  image_url: string | null;
 }
 
 function tone(p: PosProduct) { return p.available <= 0 ? "out_of_stock" : p.available <= (p.reorder_point || 5) ? "low_stock" : "in_stock"; }
@@ -100,6 +102,7 @@ function toPos(it: CatalogItem): PosProduct {
     reorder_point: Number(it.reorder_point) || 0,
     available: it.available,
     category_id: it.category_id,
+    image_url: it.image_url ?? null,
   };
 }
 
@@ -568,8 +571,13 @@ export function PosClient({
                       inCart > 0 && "ring-2 ring-brand-500",
                       isHighlight && inCart === 0 && "ring-2 ring-brand-300")}>
                     <button disabled={out} onClick={() => { setHighlight(i); add(p); }} className="flex flex-1 flex-col text-left disabled:cursor-not-allowed">
-                      <div className="mb-2 flex h-20 items-center justify-center rounded-xl bg-surface-2 text-text-tertiary">
-                        <Package className="h-7 w-7" />
+                      <div className="mb-2 flex h-20 items-center justify-center overflow-hidden rounded-xl bg-surface-2 text-text-tertiary">
+                        {p.image_url ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={p.image_url} alt="" className="h-full w-full object-cover" />
+                        ) : (
+                          <Package className="h-7 w-7" />
+                        )}
                       </div>
                       <h3 className="line-clamp-2 text-sm font-medium leading-tight text-text-primary">{p.name}</h3>
                       {p.label && <p className="mt-0.5 text-xs text-text-tertiary">{p.label}</p>}

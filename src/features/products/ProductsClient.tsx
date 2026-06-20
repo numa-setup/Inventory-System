@@ -18,7 +18,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { useToast } from "@/components/ui/Toast";
 import { ExportMenu } from "@/components/ui/ExportMenu";
 import { cn, formatPKR } from "@/lib/utils";
-import { createProduct, updateProduct, updateVariant, bulkSetPrice, searchProducts, setProductActive, permanentlyDeleteProduct, uploadProductImages, type ProductInput, type VariantInput } from "./actions";
+import { createProduct, updateProduct, updateVariant, bulkSetPrice, searchProducts, setProductActive, permanentlyDeleteProduct, uploadProductImages, uploadVariantImage, removeVariantImage, type ProductInput, type VariantInput } from "./actions";
 
 const UNIT_OPTIONS = ["pcs", "kg", "g", "litre", "ml", "pack", "dozen", "box", "metre"];
 import { PRODUCTS_PAGE_SIZE, type ProductRow, type VariantRow, type ProductsPage } from "@/lib/products-query";
@@ -446,7 +446,15 @@ function ProductGroup({
               <tbody>
                 {p.variants.map((v) => (
                   <tr key={v.id} className="border-b border-border/60 last:border-0">
-                    <td className="px-3 py-2 font-medium text-text-primary">{v.label}</td>
+                    <td className="px-3 py-2 font-medium text-text-primary">
+                      <div className="flex items-center gap-2">
+                        {(v.image_url ?? p.image_url) ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={v.image_url ?? p.image_url ?? ""} alt="" className="h-7 w-7 shrink-0 rounded object-cover" title={v.image_url ? "Variant photo" : "Product photo"} />
+                        ) : null}
+                        <span>{v.label}</span>
+                      </div>
+                    </td>
                     <td className="px-3 py-2 text-text-secondary">
                       <div>{v.sku}</div>
                       {v.barcode && (
@@ -576,6 +584,7 @@ function VariantEditDrawer({
       }
     >
       <form id="edit-variant-form" onSubmit={submit} className="space-y-4">
+        {variant && <VariantImageField variant={variant} onError={onError} />}
         <div className="grid grid-cols-2 gap-3">
           <div>
             <Label>SKU *</Label>
@@ -615,6 +624,70 @@ function VariantEditDrawer({
         </p>
       </form>
     </Drawer>
+  );
+}
+
+/* ---------------- Optional per-variant image ---------------- */
+
+function VariantImageField({ variant, onError }: { variant: VariantRow; onError: (m: string) => void }) {
+  const toast = useToast();
+  const [url, setUrl] = useState<string | null>(variant.image_url);
+  const [busy, setBusy] = useState(false);
+  const ref = useRef<HTMLInputElement>(null);
+
+  // reset when a different variant is opened
+  const [lastId, setLastId] = useState(variant.id);
+  if (variant.id !== lastId) { setLastId(variant.id); setUrl(variant.image_url); }
+
+  async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setBusy(true);
+    const fd = new FormData();
+    fd.append("file", file);
+    const res = await uploadVariantImage(variant.id, fd);
+    setBusy(false);
+    if (res?.error) return onError(res.error);
+    if (res && "image_url" in res && res.image_url) { setUrl(res.image_url); toast("Variant photo updated"); }
+  }
+  async function clear() {
+    setBusy(true);
+    const res = await removeVariantImage(variant.id);
+    setBusy(false);
+    if (res?.error) return onError(res.error);
+    setUrl(null);
+    toast("Variant photo removed");
+  }
+
+  return (
+    <div className="rounded-lg border border-border bg-surface p-3">
+      <div className="flex items-center gap-3">
+        <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-surface-2 text-text-tertiary">
+          {url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={url} alt="" className="h-full w-full object-cover" />
+          ) : (
+            <ImagePlus className="h-5 w-5" />
+          )}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium text-text-primary">Variant photo <span className="font-normal text-text-tertiary">· optional</span></p>
+          <p className="text-xs text-text-tertiary">{url ? "This variant shows its own photo." : "Using the product photo. Add one to override it for this variant."}</p>
+        </div>
+        <input ref={ref} type="file" accept="image/*" onChange={onFile} className="hidden" />
+        <div className="flex shrink-0 gap-1.5">
+          <Button type="button" variant="secondary" size="sm" disabled={busy} onClick={() => ref.current?.click()}>
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />} {url ? "Replace" : "Add"}
+          </Button>
+          {url && (
+            <Button type="button" variant="secondary" size="sm" disabled={busy} onClick={clear} title="Remove variant photo">
+              <X className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -798,7 +871,11 @@ function AddProductDrawer({
     if (images.length && "id" in res && res.id) {
       const fd = new FormData();
       images.forEach((f) => fd.append("files", f));
-      await uploadProductImages(res.id, fd);
+      const up = await uploadProductImages(res.id, fd);
+      if (up && "error" in up && up.error) {
+        // Product was created; only the photos failed — tell the user clearly.
+        onError(`Product saved, but photo upload failed: ${up.error}`);
+      }
     }
     setSaving(false);
     reset();

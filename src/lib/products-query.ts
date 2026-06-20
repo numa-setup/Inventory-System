@@ -17,6 +17,7 @@ export interface VariantRow {
   default_discount_value: number;
   is_default: boolean;
   active: boolean;
+  image_url: string | null;
   barcode: string | null;
   on_hand: number;
   available: number;
@@ -99,7 +100,7 @@ export async function fetchProductsPage(supabase: SupabaseClient<any>, params: P
     supabase.from("categories").select("id, name, parent_id"),
     supabase
       .from("product_variants")
-      .select("id, product_id, sku, cost, sale_price, reorder_point, default_discount_type, default_discount_value, is_default, active")
+      .select("id, product_id, sku, cost, sale_price, reorder_point, default_discount_type, default_discount_value, is_default, active, image_url")
       .in("product_id", ids)
       .order("is_default", { ascending: false }),
     supabase.from("product_options").select("id, product_id, name, sort").in("product_id", ids).order("sort"),
@@ -146,6 +147,7 @@ export async function fetchProductsPage(supabase: SupabaseClient<any>, params: P
       default_discount_value: Number(v.default_discount_value) || 0,
       is_default: v.is_default,
       active: v.active,
+      image_url: (v.image_url as string) ?? null,
       barcode: barcodeMap.get(v.id) ?? null,
       on_hand: av ? Number(av.on_hand) : 0,
       available: av ? Number(av.available) : 0,
