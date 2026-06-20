@@ -95,6 +95,9 @@ export interface VariantInput {
   sale_price: number;
   cost: number;
   reorder_point: number;
+  /** Product's default discount (Part 2). */
+  default_discount_type?: "PERCENT" | "FIXED" | null;
+  default_discount_value?: number;
   opening_qty?: number | null;
   /** Selected option values, one per option in declared order (e.g. ["Ruby Red","3.5g"]). */
   option_values: string[];
@@ -172,7 +175,10 @@ export async function updateProduct(
 /** Update a single variant's SKU / barcode / pricing / reorder / active flag. */
 export async function updateVariant(
   id: string,
-  input: { sku?: string; barcode?: string | null; sale_price?: number; cost?: number; reorder_point?: number; active?: boolean },
+  input: {
+    sku?: string; barcode?: string | null; sale_price?: number; cost?: number; reorder_point?: number;
+    default_discount_type?: "PERCENT" | "FIXED" | null; default_discount_value?: number; active?: boolean;
+  },
 ) {
   if (!(await requireManager())) return { error: "Not authorized." };
   const { sku, barcode, ...rest } = input;

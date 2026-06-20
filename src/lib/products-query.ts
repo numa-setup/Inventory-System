@@ -13,6 +13,8 @@ export interface VariantRow {
   cost: number;
   sale_price: number;
   reorder_point: number;
+  default_discount_type: "PERCENT" | "FIXED" | null;
+  default_discount_value: number;
   is_default: boolean;
   active: boolean;
   barcode: string | null;
@@ -94,7 +96,7 @@ export async function fetchProductsPage(supabase: SupabaseClient<any>, params: P
     supabase.from("categories").select("id, name, parent_id"),
     supabase
       .from("product_variants")
-      .select("id, product_id, sku, cost, sale_price, reorder_point, is_default, active")
+      .select("id, product_id, sku, cost, sale_price, reorder_point, default_discount_type, default_discount_value, is_default, active")
       .in("product_id", ids)
       .order("is_default", { ascending: false }),
     supabase.from("product_options").select("id, product_id, name, sort").in("product_id", ids).order("sort"),
@@ -137,6 +139,8 @@ export async function fetchProductsPage(supabase: SupabaseClient<any>, params: P
       cost: Number(v.cost),
       sale_price: Number(v.sale_price),
       reorder_point: Number(v.reorder_point),
+      default_discount_type: (v.default_discount_type as "PERCENT" | "FIXED" | null) ?? null,
+      default_discount_value: Number(v.default_discount_value) || 0,
       is_default: v.is_default,
       active: v.active,
       barcode: barcodeMap.get(v.id) ?? null,

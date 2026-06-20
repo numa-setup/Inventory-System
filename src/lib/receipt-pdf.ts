@@ -32,6 +32,7 @@ export async function buildReceiptPdf(d: ReceiptData): Promise<Uint8Array> {
   for (const it of d.items) {
     rows.push({ l: it.name + (it.label ? ` (${it.label})` : ""), s: 8 });
     rows.push({ l: `  ${it.qty} x ${PKR(it.unit_price)}`, r: PKR(it.line_total), s: 8 });
+    if (it.discount && it.discount > 0) rows.push({ l: "  discount", r: "-" + PKR(it.discount), s: 7 });
   }
   rows.push({ div: true });
   rows.push({ l: "Subtotal", r: PKR(d.subtotal), s: 8 });

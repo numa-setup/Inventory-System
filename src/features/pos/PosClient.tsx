@@ -24,8 +24,17 @@ import { Receipt } from "./Receipt";
 import { ReturnsSheet } from "./ReturnsSheet";
 import { checkoutSale, type PaymentInput } from "./actions";
 import { enqueueSale, getQueue, removeFromQueue, queueCount, type QueuedSalePayload } from "@/lib/pos-queue";
-import { computeTotals } from "@/lib/pricing";
+import { computeTotals, unitDiscount, round2 as round2px } from "@/lib/pricing";
 import { printReceipt, type ReceiptData } from "@/lib/receipt";
+
+/** Cart line: qty + a per-line discount (rupees). `manual` is set once the
+ *  cashier edits/removes it, so it stops tracking the product's default. */
+interface CartEntry { p: PosProduct; qty: number; discount: number; manual: boolean }
+
+/** Auto discount (rupees) for a whole line from the product's default. */
+function autoLineDiscount(p: PosProduct, qty: number): number {
+  return round2px(unitDiscount(p.price, p.disc_type, p.disc_value) * qty);
+}
 
 export interface StoreSettings {
   name: string;
@@ -46,7 +55,7 @@ interface HeldSale {
   ts: number;
   customerId: string;
   discount: string;
-  lines: { p: PosProduct; qty: number }[];
+  lines: { p: PosProduct; qty: number; discount: number; manual: boolean }[];
 }
 const HELD_KEY = "hgs-held-sales";
 function loadHeld(): HeldSale[] {
@@ -66,11 +75,15 @@ export interface PosProduct {
   barcode: string | null;
   price: number;
   cost: number;
+  /** Product's default discount — auto-filled per cart line (editable). */
+  disc_type: "PERCENT" | "FIXED" | null;
+  disc_value: number;
+  reorder_point: number;
   available: number;
   category_id: string | null;
 }
 
-function tone(p: PosProduct) { return p.available <= 0 ? "out_of_stock" : p.available <= 5 ? "low_stock" : "in_stock"; }
+function tone(p: PosProduct) { return p.available <= 0 ? "out_of_stock" : p.available <= (p.reorder_point || 5) ? "low_stock" : "in_stock"; }
 
 function toPos(it: CatalogItem): PosProduct {
   return {
@@ -82,6 +95,9 @@ function toPos(it: CatalogItem): PosProduct {
     barcode: it.barcode,
     price: it.price,
     cost: it.avg_cost || it.cost,
+    disc_type: it.disc_type ?? null,
+    disc_value: Number(it.disc_value) || 0,
+    reorder_point: Number(it.reorder_point) || 0,
     available: it.available,
     category_id: it.category_id,
   };
@@ -115,7 +131,7 @@ export function PosClient({
   }, [snap, initialBarcodeIndex]);
   const [q, setQ] = useState("");
   const [cat, setCat] = useState("");
-  const [cart, setCart] = useState<Map<string, { p: PosProduct; qty: number }>>(new Map());
+  const [cart, setCart] = useState<Map<string, CartEntry>>(new Map());
   const [customerId, setCustomerId] = useState("");
   const [discount, setDiscount] = useState("");
   const [processing, setProcessing] = useState(false);
@@ -168,13 +184,23 @@ export function PosClient({
   const returnReceipt = useSearchParams().get("receipt") ?? undefined;
   useEffect(() => { if (returnReceipt) setReturnsOpen(true); }, [returnReceipt]);
 
+  // Clamp a line's discount to its gross (qty × price), keeping it valid.
+  function clampDisc(p: PosProduct, qty: number, discount: number) {
+    return Math.min(Math.max(round2px(discount), 0), round2px(p.price * qty));
+  }
+
   function add(p: PosProduct, delta = 1) {
     setCart((c) => {
       const next = new Map(c);
-      const cur = next.get(p.variant_id)?.qty ?? 0;
+      const entry = next.get(p.variant_id);
+      const cur = entry?.qty ?? 0;
       const qty = Math.max(0, cur + delta);
-      if (qty === 0) next.delete(p.variant_id);
-      else next.set(p.variant_id, { p, qty });
+      if (qty === 0) { next.delete(p.variant_id); return next; }
+      const manual = entry?.manual ?? false;
+      // Auto lines track the product's default discount as qty changes; manual
+      // (cashier-set) lines keep their amount, just re-clamped to the new gross.
+      const discount = manual ? clampDisc(p, qty, entry?.discount ?? 0) : autoLineDiscount(p, qty);
+      next.set(p.variant_id, { p, qty, discount, manual });
       return next;
     });
   }
@@ -183,7 +209,29 @@ export function PosClient({
       const next = new Map(c);
       const entry = next.get(id);
       if (!entry) return next;
-      if (qty <= 0) next.delete(id); else next.set(id, { ...entry, qty });
+      if (qty <= 0) { next.delete(id); return next; }
+      const discount = entry.manual ? clampDisc(entry.p, qty, entry.discount) : autoLineDiscount(entry.p, qty);
+      next.set(id, { ...entry, qty, discount });
+      return next;
+    });
+  }
+  // Cashier edits a line's discount → fixed (manual) until removed.
+  function setLineDiscount(id: string, value: number) {
+    setCart((c) => {
+      const next = new Map(c);
+      const entry = next.get(id);
+      if (!entry) return next;
+      next.set(id, { ...entry, discount: clampDisc(entry.p, entry.qty, value), manual: true });
+      return next;
+    });
+  }
+  // Remove this line's discount entirely (charge full price for this customer).
+  function clearLineDiscount(id: string) {
+    setCart((c) => {
+      const next = new Map(c);
+      const entry = next.get(id);
+      if (!entry) return next;
+      next.set(id, { ...entry, discount: 0, manual: true });
       return next;
     });
   }
@@ -242,12 +290,12 @@ export function PosClient({
 
   const lines = [...cart.values()];
   const { subtotal, discount: disc, tax, total } = computeTotals(
-    lines.map((l) => ({ qty: l.qty, unit_price: l.p.price, discount: 0 })),
+    lines.map((l) => ({ qty: l.qty, unit_price: l.p.price, discount: l.discount })),
     Number(discount) || 0,
     store.tax_percent,
   );
   const count = lines.reduce((s, l) => s + l.qty, 0);
-  // Margin guard: warn when the bill discount pushes the sale below total cost.
+  // Margin guard: warn when line + bill discounts push the sale below total cost.
   const totalCost = lines.reduce((s, l) => s + (l.p.cost > 0 ? l.p.cost * l.qty : 0), 0);
   const belowCost = totalCost > 0 && subtotal - disc < totalCost;
 
@@ -265,7 +313,7 @@ export function PosClient({
     const payload: QueuedSalePayload = {
       lines: cartLines.map((l) => ({
         variant_id: l.p.variant_id, product_id: l.p.product_id, qty: l.qty, unit_price: l.p.price,
-        discount: 0,
+        discount: l.discount,
       })),
       customer_id: customerId || null, payments, discount: Number(discount) || 0,
     };
@@ -278,7 +326,7 @@ export function PosClient({
       date: new Date().toLocaleString("en-PK", { dateStyle: "medium", timeStyle: "short" }),
       cashier: cashierName,
       customer: cust?.name ?? null,
-      items: cartLines.map((l) => ({ name: l.p.name, label: l.p.label || undefined, qty: l.qty, unit_price: l.p.price, line_total: round2(l.p.price * l.qty) })),
+      items: cartLines.map((l) => ({ name: l.p.name, label: l.p.label || undefined, qty: l.qty, unit_price: l.p.price, discount: l.discount, line_total: round2(l.p.price * l.qty) })),
       subtotal: sub, discount: dis, tax: tx, tax_percent: store.tax_percent, total: tot,
       payments, change,
     });
@@ -360,7 +408,7 @@ export function PosClient({
       ts: Date.now(),
       customerId,
       discount,
-      lines: lines.map((l) => ({ p: l.p, qty: l.qty })),
+      lines: lines.map((l) => ({ p: l.p, qty: l.qty, discount: l.discount, manual: l.manual })),
     };
     const next = [entry, ...held];
     setHeld(next); saveHeld(next);
@@ -377,11 +425,11 @@ export function PosClient({
       next = [{
         id: crypto.randomUUID?.() ?? `${Date.now()}`,
         ts: Date.now(), customerId, discount,
-        lines: lines.map((l) => ({ p: l.p, qty: l.qty })),
+        lines: lines.map((l) => ({ p: l.p, qty: l.qty, discount: l.discount, manual: l.manual })),
         }, ...next];
     }
     setHeld(next); saveHeld(next);
-    setCart(new Map(entry.lines.map((l) => [l.p.variant_id, l])));
+    setCart(new Map(entry.lines.map((l) => [l.p.variant_id, { p: l.p, qty: l.qty, discount: l.discount, manual: l.manual }])));
     setDiscount(entry.discount);
     setCustomerId(entry.customerId);
     setHeldOpen(false);
@@ -551,7 +599,8 @@ export function PosClient({
           lines={lines} subtotal={subtotal} discount={discount} setDiscount={setDiscount} total={total} tax={tax} taxPercent={store.tax_percent}
           belowCost={belowCost}
           customers={customers} customerId={customerId} setCustomerId={setCustomerId}
-          setQty={setQty} remove={(id) => setQty(id, 0)} processing={processing} onCharge={openPayment} onHold={holdSale}
+          setQty={setQty} remove={(id) => setQty(id, 0)} setLineDiscount={setLineDiscount} clearLineDiscount={clearLineDiscount}
+          processing={processing} onCharge={openPayment} onHold={holdSale}
         />
       </div>
 
@@ -577,7 +626,8 @@ export function PosClient({
               lines={lines} subtotal={subtotal} discount={discount} setDiscount={setDiscount} total={total} tax={tax} taxPercent={store.tax_percent}
               belowCost={belowCost}
               customers={customers} customerId={customerId} setCustomerId={setCustomerId}
-              setQty={setQty} remove={(id) => setQty(id, 0)} processing={processing} onCharge={openPayment} onHold={holdSale} embedded
+              setQty={setQty} remove={(id) => setQty(id, 0)} setLineDiscount={setLineDiscount} clearLineDiscount={clearLineDiscount}
+              processing={processing} onCharge={openPayment} onHold={holdSale} embedded
             />
           </div>
         </div>
@@ -623,7 +673,7 @@ export function PosClient({
                 <div className="flex h-32 items-center justify-center text-sm text-text-tertiary">No held sales</div>
               ) : held.map((h) => {
                 const count = h.lines.reduce((s, l) => s + l.qty, 0);
-                const amt = h.lines.reduce((s, l) => s + l.p.price * l.qty, 0);
+                const amt = h.lines.reduce((s, l) => s + l.p.price * l.qty - (l.discount ?? 0), 0);
                 const cust = customers.find((c) => c.id === h.customerId);
                 return (
                   <div key={h.id} className="flex items-center gap-2 rounded-xl border border-border p-3 mb-2">
@@ -685,15 +735,16 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
 
 function CartPanel({
   lines, subtotal, discount, setDiscount, total, tax, taxPercent, belowCost,
-  customers, customerId, setCustomerId, setQty, remove, processing, onCharge, onHold, embedded,
+  customers, customerId, setCustomerId, setQty, remove, setLineDiscount, clearLineDiscount, processing, onCharge, onHold, embedded,
 }: {
-  lines: { p: PosProduct; qty: number }[];
+  lines: CartEntry[];
   subtotal: number; discount: string; setDiscount: (v: string) => void; total: number;
   tax: number; taxPercent: number;
   belowCost: boolean;
   customers: { id: string; name: string; phone: string | null }[];
   customerId: string; setCustomerId: (v: string) => void;
   setQty: (id: string, qty: number) => void; remove: (id: string) => void;
+  setLineDiscount: (id: string, value: number) => void; clearLineDiscount: (id: string) => void;
   processing: boolean; onCharge: () => void; onHold: () => void; embedded?: boolean;
 }) {
   return (
@@ -708,21 +759,56 @@ function CartPanel({
           <div className="flex h-full min-h-[120px] flex-col items-center justify-center gap-2 p-6 text-center text-text-tertiary">
             <ShoppingCart className="h-8 w-8" /><p className="text-sm">Tap products to add them</p>
           </div>
-        ) : lines.map((l) => (
-          <div key={l.p.variant_id} className="flex items-center gap-2 border-b border-border/60 px-3 py-2 last:border-0">
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-sm font-medium text-text-primary">{l.p.name}</div>
-              <div className="text-xs text-text-tertiary">{l.p.label || l.p.sku} · {formatPKR(l.p.price)}</div>
+        ) : lines.map((l) => {
+          const gross = l.p.price * l.qty;
+          const net = round2(gross - l.discount);
+          const hasDisc = l.discount > 0;
+          const lineBelowCost = l.p.cost > 0 && net < l.p.cost * l.qty;
+          return (
+          <div key={l.p.variant_id} className="border-b border-border/60 px-3 py-2 last:border-0">
+            <div className="flex items-center gap-2">
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-sm font-medium text-text-primary">{l.p.name}</div>
+                <div className="text-xs text-text-tertiary">
+                  {l.p.label || l.p.sku} ·{" "}
+                  {hasDisc ? (
+                    <>
+                      <span className="line-through">{formatPKR(l.p.price)}</span>{" "}
+                      <span className="font-medium text-green-text">{formatPKR(round2(l.p.price - l.discount / l.qty))}</span>
+                    </>
+                  ) : formatPKR(l.p.price)}
+                </div>
+              </div>
+              <div className="flex items-center gap-1">
+                <button onClick={() => setQty(l.p.variant_id, l.qty - 1)} className="flex h-7 w-7 items-center justify-center rounded-md border border-border text-text-primary"><Minus className="h-3.5 w-3.5" /></button>
+                <span className="tnum w-6 text-center text-sm font-semibold">{l.qty}</span>
+                <button onClick={() => setQty(l.p.variant_id, l.qty + 1)} disabled={l.qty >= l.p.available} className="flex h-7 w-7 items-center justify-center rounded-md border border-border text-text-primary disabled:opacity-40"><Plus className="h-3.5 w-3.5" /></button>
+              </div>
+              <div className="tnum w-16 text-right text-sm font-medium text-text-primary">{formatPKR(net)}</div>
+              <button onClick={() => remove(l.p.variant_id)} className="rounded-md p-1 text-text-tertiary hover:text-coral-text"><Trash2 className="h-4 w-4" /></button>
             </div>
-            <div className="flex items-center gap-1">
-              <button onClick={() => setQty(l.p.variant_id, l.qty - 1)} className="flex h-7 w-7 items-center justify-center rounded-md border border-border text-text-primary"><Minus className="h-3.5 w-3.5" /></button>
-              <span className="tnum w-6 text-center text-sm font-semibold">{l.qty}</span>
-              <button onClick={() => setQty(l.p.variant_id, l.qty + 1)} disabled={l.qty >= l.p.available} className="flex h-7 w-7 items-center justify-center rounded-md border border-border text-text-primary disabled:opacity-40"><Plus className="h-3.5 w-3.5" /></button>
+            {/* per-line discount: auto-filled from the product, editable / removable */}
+            <div className="mt-1 flex items-center gap-2 pl-0.5">
+              <span className="text-[11px] text-text-tertiary">Discount</span>
+              <Input
+                type="number"
+                value={l.discount ? String(round2(l.discount)) : ""}
+                onChange={(e) => setLineDiscount(l.p.variant_id, Number(e.target.value) || 0)}
+                placeholder="0"
+                className="h-7 w-20 text-right text-xs"
+              />
+              {hasDisc && (
+                <button onClick={() => clearLineDiscount(l.p.variant_id)} className="text-[11px] font-medium text-text-tertiary hover:text-coral-text">Remove</button>
+              )}
+              {lineBelowCost && (
+                <span className="ml-auto flex items-center gap-1 text-[11px] font-medium text-coral-text" title="This line is below its cost">
+                  <AlertTriangle className="h-3 w-3" /> below cost
+                </span>
+              )}
             </div>
-            <div className="tnum w-16 text-right text-sm font-medium text-text-primary">{formatPKR(l.p.price * l.qty)}</div>
-            <button onClick={() => remove(l.p.variant_id)} className="rounded-md p-1 text-text-tertiary hover:text-coral-text"><Trash2 className="h-4 w-4" /></button>
           </div>
-        ))}
+          );
+        })}
       </div>
 
       <div className="space-y-3 border-t border-border p-4">

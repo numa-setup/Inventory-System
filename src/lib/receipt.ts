@@ -5,6 +5,8 @@ export interface ReceiptItem {
   label?: string;
   qty: number;
   unit_price: number;
+  /** Per-line discount in rupees (off the gross line). */
+  discount?: number;
   line_total: number;
 }
 
@@ -44,7 +46,10 @@ export function receiptInnerHtml(d: ReceiptData): string {
     .map(
       (it) =>
         `<tr><td colspan="3" class="nm">${esc(it.name)}${it.label ? ` <span class="dim">${esc(it.label)}</span>` : ""}</td></tr>` +
-        `<tr><td class="dim">${it.qty} × ${PKR(it.unit_price)}</td><td></td><td class="r">${PKR(it.line_total)}</td></tr>`,
+        `<tr><td class="dim">${it.qty} × ${PKR(it.unit_price)}</td><td></td><td class="r">${PKR(it.line_total)}</td></tr>` +
+        (it.discount && it.discount > 0
+          ? `<tr><td class="dim">  discount</td><td></td><td class="r dim">-${PKR(it.discount)}</td></tr>`
+          : ""),
     )
     .join("");
 

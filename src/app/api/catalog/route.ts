@@ -17,7 +17,7 @@ export async function GET() {
   const { data, error } = await supabase
     .from("catalog_index")
     .select(
-      "variant_id, product_id, product_name, brand, has_variants, is_variable_weight, sku, label, barcode, price, cost, category_id, image_url, available, avg_cost, active, updated_at",
+      "variant_id, product_id, product_name, brand, has_variants, is_variable_weight, sku, label, barcode, price, cost, disc_type, disc_value, reorder_point, category_id, image_url, available, avg_cost, active, updated_at",
     )
     .eq("active", true)
     .order("product_name");

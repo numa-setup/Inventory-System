@@ -36,6 +36,13 @@ function variantTone(v: VariantRow) {
   if (v.available <= v.reorder_point) return "low_stock";
   return "in_stock";
 }
+/** Discounted selling price from a variant's default discount. */
+function discountedPrice(v: VariantRow) {
+  const off = v.default_discount_type === "PERCENT"
+    ? (v.sale_price * v.default_discount_value) / 100
+    : v.default_discount_type === "FIXED" ? v.default_discount_value : 0;
+  return Math.max(Math.round((v.sale_price - off) * 100) / 100, 0);
+}
 function productStatus(p: ProductRow) {
   if (p.out) return "out_of_stock";
   if (p.low) return "low_stock";
@@ -418,7 +425,14 @@ function ProductGroup({
                       )}
                     </td>
                     <td className="px-3 py-2 text-right tnum text-text-secondary">{formatPKR(v.avg_cost || v.cost)}</td>
-                    <td className="px-3 py-2 text-right tnum text-text-primary">{formatPKR(v.sale_price)}</td>
+                    <td className="px-3 py-2 text-right tnum text-text-primary">
+                      {v.default_discount_type ? (
+                        <div className="flex flex-col items-end leading-tight">
+                          <span className="text-xs text-text-tertiary line-through">{formatPKR(v.sale_price)}</span>
+                          <span className="text-green-text">{formatPKR(discountedPrice(v))}</span>
+                        </div>
+                      ) : formatPKR(v.sale_price)}
+                    </td>
                     <td className="px-3 py-2 text-right tnum">{v.on_hand}</td>
                     <td className="px-3 py-2 text-right tnum text-text-tertiary">{v.reorder_point}</td>
                     <td className="px-3 py-2"><StatusPill status={variantTone(v)} /></td>
@@ -479,7 +493,7 @@ function VariantEditDrawer({
   onSaved: () => void;
   onError: (m: string) => void;
 }) {
-  const [form, setForm] = useState({ sku: "", barcode: "", sale_price: "", cost: "", reorder_point: "" });
+  const [form, setForm] = useState({ sku: "", barcode: "", sale_price: "", cost: "", reorder_point: "", disc_type: "" as DiscType, disc_value: "" });
   const [saving, setSaving] = useState(false);
 
   // sync when a new variant is opened
@@ -492,6 +506,8 @@ function VariantEditDrawer({
       sale_price: String(variant.sale_price),
       cost: String(variant.cost),
       reorder_point: String(variant.reorder_point),
+      disc_type: (variant.default_discount_type ?? "") as DiscType,
+      disc_value: variant.default_discount_value ? String(variant.default_discount_value) : "",
     });
   }
 
@@ -506,6 +522,8 @@ function VariantEditDrawer({
       sale_price: Number(form.sale_price) || 0,
       cost: Number(form.cost) || 0,
       reorder_point: Number(form.reorder_point) || 0,
+      default_discount_type: form.disc_type || null,
+      default_discount_value: form.disc_type ? Number(form.disc_value) || 0 : 0,
     });
     setSaving(false);
     if (res?.error) return onError(res.error);
@@ -548,10 +566,18 @@ function VariantEditDrawer({
           </div>
         </div>
         <div>
-          <Label>Reorder at</Label>
+          <Label>Low-stock alert at (qty)</Label>
           <Input type="number" value={form.reorder_point} onChange={(e) => setForm((f) => ({ ...f, reorder_point: e.target.value }))} />
           <p className="mt-1 text-xs text-text-tertiary">Get a low-stock alert when on-hand drops to this number.</p>
         </div>
+        <DiscountField
+          type={form.disc_type}
+          value={form.disc_value}
+          price={Number(form.sale_price) || 0}
+          onType={(v) => setForm((f) => ({ ...f, disc_type: v }))}
+          onValue={(v) => setForm((f) => ({ ...f, disc_value: v }))}
+        />
+        <p className="-mt-1 text-xs text-text-tertiary">Auto-fills at the till; the cashier can change or remove it per sale.</p>
         <p className="rounded-lg bg-surface-2 px-3 py-2 text-[11px] text-text-tertiary">
           On-hand quantity isn’t edited here — it changes only through the Stock area
           (every movement is recorded in the ledger).
@@ -570,7 +596,44 @@ interface VariantDraft {
   sale_price: string;
   cost: string;
   reorder: string;
+  disc_type: "" | "PERCENT" | "FIXED";
+  disc_value: string;
   opening_qty: string;
+}
+
+type DiscType = "" | "PERCENT" | "FIXED";
+
+/** Compact "Default discount" control: type (none/%/Rs) + value. */
+function DiscountField({
+  type, value, price, onType, onValue,
+}: {
+  type: DiscType; value: string; price: number;
+  onType: (v: DiscType) => void; onValue: (v: string) => void;
+}) {
+  const p = Number(price) || 0;
+  const v = Number(value) || 0;
+  const off = type === "PERCENT" ? (p * v) / 100 : type === "FIXED" ? v : 0;
+  const net = Math.max(p - off, 0);
+  return (
+    <div>
+      <Label>Default discount</Label>
+      <div className="flex gap-2">
+        <Select value={type} onChange={(e) => onType(e.target.value as DiscType)} className="w-32">
+          <option value="">No discount</option>
+          <option value="PERCENT">Percent %</option>
+          <option value="FIXED">Fixed ₨</option>
+        </Select>
+        {type && (
+          <Input type="number" value={value} onChange={(e) => onValue(e.target.value)} placeholder={type === "PERCENT" ? "e.g. 10" : "e.g. 50"} className="w-28" />
+        )}
+        {type && p > 0 && v > 0 && (
+          <span className="flex items-center text-xs text-text-tertiary">
+            → sells at <span className="ml-1 font-medium text-green-text">{formatPKR(net)}</span>
+          </span>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function cartesian(lists: string[][]): string[][] {
@@ -596,7 +659,7 @@ function AddProductDrawer({
 
   const topCats = catTree.filter((c) => !c.parent_id);
   const subCats = catTree.filter((c) => c.parent_id === parentCat);
-  const [single, setSingle] = useState({ sku: "", barcode: "", cost: "", reorder: "3", opening_qty: "" });
+  const [single, setSingle] = useState({ sku: "", barcode: "", cost: "", reorder: "3", opening_qty: "", disc_type: "" as DiscType, disc_value: "" });
   const [options, setOptions] = useState<{ name: string; values: string }[]>([{ name: "", values: "" }]);
   const [matrix, setMatrix] = useState<VariantDraft[]>([]);
   const [saving, setSaving] = useState(false);
@@ -607,7 +670,7 @@ function AddProductDrawer({
     setParentCat("");
     setHasVariants(false);
     setImages([]);
-    setSingle({ sku: "", barcode: "", cost: "", reorder: "3", opening_qty: "" });
+    setSingle({ sku: "", barcode: "", cost: "", reorder: "3", opening_qty: "", disc_type: "", disc_value: "" });
     setOptions([{ name: "", values: "" }]);
     setMatrix([]);
     setErr(undefined);
@@ -630,6 +693,8 @@ function AddProductDrawer({
         sale_price: base.base_price || "",
         cost: "",
         reorder: "3",
+        disc_type: "" as DiscType,
+        disc_value: "",
         opening_qty: "",
       })),
     );
@@ -652,6 +717,8 @@ function AddProductDrawer({
         sale_price: Number(base.base_price) || 0,
         cost: Number(single.cost) || 0,
         reorder_point: Number(single.reorder) || 0,
+        default_discount_type: single.disc_type || null,
+        default_discount_value: single.disc_type ? Number(single.disc_value) || 0 : 0,
         opening_qty: single.opening_qty ? Number(single.opening_qty) : null,
         option_values: [],
       };
@@ -674,6 +741,8 @@ function AddProductDrawer({
           sale_price: Number(m.sale_price) || Number(base.base_price) || 0,
           cost: Number(m.cost) || 0,
           reorder_point: Number(m.reorder) || 0,
+          default_discount_type: m.disc_type || null,
+          default_discount_value: m.disc_type ? Number(m.disc_value) || 0 : 0,
           opening_qty: m.opening_qty ? Number(m.opening_qty) : null,
           option_values: m.combo,
         })),
@@ -815,6 +884,14 @@ function AddProductDrawer({
               </div>
             </div>
             <Help>Cost price = what you pay your supplier. Reorder at = stock level that triggers a low-stock alert. Opening stock = how many you have on hand right now.</Help>
+            <DiscountField
+              type={single.disc_type}
+              value={single.disc_value}
+              price={Number(base.base_price) || 0}
+              onType={(v) => setSingle((s) => ({ ...s, disc_type: v }))}
+              onValue={(v) => setSingle((s) => ({ ...s, disc_value: v }))}
+            />
+            <Help>The standard discount for this product. It auto-fills at the till — the cashier can still change or remove it per sale.</Help>
           </div>
         ) : (
           <div className="space-y-3">
@@ -858,6 +935,8 @@ function AddProductDrawer({
                       <th className="px-2 py-2 text-left font-semibold">Barcode</th>
                       <th className="px-2 py-2 text-right font-semibold">Sell ₨</th>
                       <th className="px-2 py-2 text-right font-semibold">Cost ₨</th>
+                      <th className="px-2 py-2 text-left font-semibold">Discount</th>
+                      <th className="px-2 py-2 text-right font-semibold">Reorder</th>
                       <th className="px-2 py-2 text-right font-semibold">Opening</th>
                     </tr>
                   </thead>
@@ -869,6 +948,17 @@ function AddProductDrawer({
                         <td className="px-2 py-1.5"><Input value={m.barcode} onChange={(e) => setMatrixField(i, "barcode", e.target.value)} className="h-7 w-28 text-xs" /></td>
                         <td className="px-2 py-1.5"><Input type="number" value={m.sale_price} onChange={(e) => setMatrixField(i, "sale_price", e.target.value)} className="h-7 w-16 text-xs" /></td>
                         <td className="px-2 py-1.5"><Input type="number" value={m.cost} onChange={(e) => setMatrixField(i, "cost", e.target.value)} className="h-7 w-16 text-xs" /></td>
+                        <td className="px-2 py-1.5">
+                          <div className="flex items-center gap-1">
+                            <select value={m.disc_type} onChange={(e) => setMatrixField(i, "disc_type", e.target.value)} className="h-7 rounded-md border border-border bg-surface px-1 text-xs">
+                              <option value="">—</option>
+                              <option value="PERCENT">%</option>
+                              <option value="FIXED">₨</option>
+                            </select>
+                            {m.disc_type && <Input type="number" value={m.disc_value} onChange={(e) => setMatrixField(i, "disc_value", e.target.value)} className="h-7 w-14 text-xs" />}
+                          </div>
+                        </td>
+                        <td className="px-2 py-1.5"><Input type="number" value={m.reorder} onChange={(e) => setMatrixField(i, "reorder", e.target.value)} className="h-7 w-14 text-xs" /></td>
                         <td className="px-2 py-1.5"><Input type="number" value={m.opening_qty} onChange={(e) => setMatrixField(i, "opening_qty", e.target.value)} className="h-7 w-14 text-xs" /></td>
                       </tr>
                     ))}

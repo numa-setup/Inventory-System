@@ -12,6 +12,7 @@ export const uuid = z.string().uuid("must be a valid id");
 const optId = z.string().uuid().nullable().optional();
 const money = z.number().finite().nonnegative();
 const qty = z.number().finite().positive();
+const discountType = z.enum(["PERCENT", "FIXED"]).nullable().optional();
 export const payMethod = z.enum(["CASH", "CARD", "BANK", "JAZZCASH", "EASYPAISA", "WALLET", "UDHAAR", "COD"]);
 
 // ---- POS ----------------------------------------------------------------
@@ -100,6 +101,8 @@ export const productInputSchema = z.object({
     sale_price: money,
     cost: money,
     reorder_point: money,
+    default_discount_type: discountType,
+    default_discount_value: money.optional(),
     opening_qty: money.nullable().optional(),
     option_values: z.array(z.string()),
   })).min(1, "At least one variant is required."),
@@ -109,6 +112,8 @@ export const variantPatchSchema = z.object({
   sale_price: money.optional(),
   cost: money.optional(),
   reorder_point: money.optional(),
+  default_discount_type: discountType,
+  default_discount_value: money.optional(),
   active: z.boolean().optional(),
 });
 

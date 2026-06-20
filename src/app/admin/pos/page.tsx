@@ -12,7 +12,7 @@ export default async function PosPage() {
   const [{ data: catalog }, { data: customers }, { data: categories }, { data: settings }, user] = await Promise.all([
     supabase
       .from("catalog_index")
-      .select("variant_id, product_id, product_name, has_variants, sku, label, barcode, price, avg_cost, cost, category_id, available")
+      .select("variant_id, product_id, product_name, has_variants, sku, label, barcode, price, avg_cost, cost, disc_type, disc_value, reorder_point, category_id, available")
       .eq("active", true)
       .order("product_name"),
     supabase.from("customers").select("id, name, phone").order("name"),
@@ -44,6 +44,9 @@ export default async function PosPage() {
     barcode: v.barcode,
     price: Number(v.price),
     cost: Number(v.avg_cost) || Number(v.cost),
+    disc_type: (v.disc_type as "PERCENT" | "FIXED" | null) ?? null,
+    disc_value: Number(v.disc_value) || 0,
+    reorder_point: Number(v.reorder_point) || 0,
     available: Number(v.available),
     category_id: v.category_id,
   }));

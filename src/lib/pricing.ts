@@ -4,6 +4,24 @@
 
 export const round2 = (n: number) => Math.round(n * 100) / 100;
 
+export type DiscountType = "PERCENT" | "FIXED" | null | undefined;
+
+/**
+ * Per-unit discount in rupees from a product's default discount.
+ * PERCENT → price × value%, FIXED → flat value. Never exceeds the price and
+ * never goes negative, so the discounted price stays in [0, price].
+ */
+export function unitDiscount(price: number, type: DiscountType, value: number): number {
+  if (!type || !value || value <= 0 || price <= 0) return 0;
+  const raw = type === "PERCENT" ? (price * value) / 100 : value;
+  return round2(Math.min(Math.max(raw, 0), price));
+}
+
+/** Discounted unit price after applying the default discount. */
+export function discountedUnitPrice(price: number, type: DiscountType, value: number): number {
+  return round2(price - unitDiscount(price, type, value));
+}
+
 export interface PriceLine {
   qty: number;
   unit_price: number;

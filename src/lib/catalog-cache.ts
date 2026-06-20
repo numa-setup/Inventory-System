@@ -18,6 +18,11 @@ export interface CatalogItem {
   barcode: string | null;
   price: number;
   cost: number;
+  /** Product's default discount (auto-filled in the POS cart). */
+  disc_type: "PERCENT" | "FIXED" | null;
+  disc_value: number;
+  /** Per-variant low-stock threshold. */
+  reorder_point: number;
   category_id: string | null;
   image_url: string | null;
   available: number;
