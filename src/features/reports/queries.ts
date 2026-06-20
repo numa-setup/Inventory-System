@@ -4,6 +4,7 @@ import type { DimensionFilter } from "@/components/ui/FilterBar";
 import { getVariantOptions } from "@/lib/catalog";
 import { formatPKR, formatNumber } from "@/lib/utils";
 import { bucketKey, bucketOf, type DateRange } from "@/lib/dates";
+import { format } from "date-fns";
 
 type Supabase = Awaited<ReturnType<typeof createClient>>;
 
@@ -34,6 +35,7 @@ export const REPORTS: { key: string; label: string }[] = [
   { key: "sales", label: "Sales" },
   { key: "profit", label: "Profit & Margin" },
   { key: "inventory", label: "Inventory Valuation" },
+  { key: "stockin", label: "Stock Additions" },
   { key: "products", label: "Product Performance" },
   { key: "purchases", label: "Purchases & Suppliers" },
   { key: "customers", label: "Customers & Udhaar" },
@@ -58,6 +60,7 @@ export async function buildReport(supabase: Supabase, key: string, range: DateRa
   switch (key) {
     case "profit": return profitReport(supabase, range);
     case "inventory": return inventoryReport(supabase, range);
+    case "stockin": return stockInReport(supabase, range, params);
     case "products": return productsReport(supabase, range, params);
     case "purchases": return purchasesReport(supabase, range);
     case "customers": return customersReport(supabase, range);
@@ -309,6 +312,105 @@ async function inventoryReport(supabase: Supabase, range: DateRange): Promise<Re
       { key: "value", header: "Value", align: "right", kind: "pkr" },
     ],
     rows: rows.slice(0, 100), dimensions: [],
+  };
+}
+
+/* ---------------- Stock Additions (date-filterable stock-in ledger) ---------------- */
+// Every time stock was ADDED — receiving (PO / GRN), manual stock-in, or opening
+// stock. These are exactly the ledger moves coming FROM a supplier location into
+// a physical one. Filterable by date (FilterBar), product, category, supplier
+// and user.
+async function stockInReport(supabase: Supabase, range: DateRange, params: URLSearchParams): Promise<ReportData> {
+  const fProduct = params.get("product") ?? "";
+  const fCategory = params.get("category") ?? "";
+  const fSupplier = params.get("supplier") ?? "";
+  const fUser = params.get("user") ?? "";
+
+  // Supplier-type locations mark a stock addition (in-flow from outside).
+  const { data: locs } = await supabase.from("locations").select("id, type");
+  const supplierLocIds = (locs ?? []).filter((l) => l.type === "SUPPLIER").map((l) => l.id);
+
+  let mq = supabase
+    .from("stock_moves")
+    .select("id, variant_id, product_id, qty, unit_cost, created_at, created_by, reference_type, reference_id")
+    .in("from_location_id", supplierLocIds)
+    .gte("created_at", iso(range.from)).lte("created_at", iso(range.to))
+    .order("created_at", { ascending: false });
+  if (fProduct) mq = mq.eq("product_id", fProduct);
+  if (fUser) mq = mq.eq("created_by", fUser);
+  const { data: moves } = await mq;
+
+  // supplier comes from the goods receipt the move references (when any)
+  const grnIds = [...new Set((moves ?? []).map((m) => m.reference_id).filter(Boolean))] as string[];
+  const { data: grns } = grnIds.length
+    ? await supabase.from("goods_receipts").select("id, supplier_id").in("id", grnIds)
+    : { data: [] as { id: string; supplier_id: string | null }[] };
+  const grnSupplier = new Map((grns ?? []).map((g) => [g.id, g.supplier_id]));
+  const { data: suppliers } = await supabase.from("suppliers").select("id, name");
+  const supName = new Map((suppliers ?? []).map((s) => [s.id, s.name as string]));
+
+  const variants = await getVariantOptions(supabase);
+  const vMap = new Map(variants.map((v) => [v.variant_id, v]));
+  const catName = await categoryNames(supabase);
+  const profiles = await profileNames(supabase);
+
+  type Add = Record<string, unknown> & { _cat: string | null; _sup: string; created_at: string; qty: number; value: number; product: string };
+  let rows: Add[] = (moves ?? []).map((m) => {
+    const v = vMap.get(m.variant_id);
+    const supplierId = m.reference_id ? (grnSupplier.get(m.reference_id) ?? null) : null;
+    const supplier = supplierId ? (supName.get(supplierId) ?? "—") : (m.reference_type === "OPENING" ? "Opening stock" : "—");
+    const qty = Number(m.qty);
+    const cost = Number(m.unit_cost ?? 0);
+    return {
+      _cat: v?.category_id ?? null,
+      _sup: supplierId ?? "",
+      created_at: m.created_at,
+      datetime: format(new Date(m.created_at), "d MMM yyyy, h:mm a"),
+      product: v ? `${v.product_name} · ${v.label}` : "—",
+      qty, cost, value: qty * cost, supplier,
+      user: m.created_by ? (profiles.get(m.created_by) ?? "—") : "—",
+    };
+  });
+  if (fCategory) rows = rows.filter((r) => r._cat === fCategory);
+  if (fSupplier) rows = rows.filter((r) => r._sup === fSupplier);
+
+  const totalQty = rows.reduce((s, r) => s + r.qty, 0);
+  const totalValue = rows.reduce((s, r) => s + r.value, 0);
+
+  // dimension option lists (distinct, from full data)
+  const productOpts = [...new Map(variants.map((v) => [v.product_id, v.product_name])).entries()]
+    .map(([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label));
+  const usedCats = new Set(variants.map((v) => v.category_id).filter(Boolean) as string[]);
+  const categoryOpts = [...catName.entries()].filter(([id]) => usedCats.has(id))
+    .map(([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label));
+  const supplierOpts = (suppliers ?? []).map((s) => ({ value: s.id, label: s.name as string })).sort((a, b) => a.label.localeCompare(b.label));
+  const userOpts = [...profiles.entries()].map(([value, label]) => ({ value, label: label as string })).sort((a, b) => a.label.localeCompare(b.label));
+
+  return {
+    key: "stockin", title: "Stock Additions", subtitle: range.label,
+    kpis: [
+      { label: "Additions", value: formatNumber(rows.length), accent: "blue" },
+      { label: "Units added", value: formatNumber(totalQty), accent: "teal" },
+      { label: "Cost value", value: formatPKR(totalValue, { compact: true }), accent: "amber" },
+      { label: "Products", value: formatNumber(new Set(rows.map((r) => r.product)).size), accent: "purple" },
+    ],
+    charts: [{ ...trend(range, rows.map((r) => ({ created_at: r.created_at, value: r.qty })), "teal", "qty"), type: "bar", title: "Units added" }],
+    columns: [
+      { key: "datetime", header: "Date / time", kind: "text" },
+      { key: "product", header: "Product", kind: "text" },
+      { key: "qty", header: "Qty added", align: "right", kind: "num" },
+      { key: "cost", header: "Unit cost", align: "right", kind: "pkr" },
+      { key: "value", header: "Value", align: "right", kind: "pkr" },
+      { key: "supplier", header: "Supplier", kind: "text" },
+      { key: "user", header: "Added by", kind: "text" },
+    ],
+    rows,
+    dimensions: [
+      { key: "product", label: "All products", options: productOpts },
+      { key: "category", label: "All categories", options: categoryOpts },
+      { key: "supplier", label: "All suppliers", options: supplierOpts },
+      { key: "user", label: "All users", options: userOpts },
+    ],
   };
 }
 
