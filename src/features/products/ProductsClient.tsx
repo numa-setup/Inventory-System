@@ -66,7 +66,10 @@ export function ProductsClient({
   const router = useRouter();
   const toast = useToast();
   const queryClient = useQueryClient();
-  const initialQ = useSearchParams().get("q") ?? ""; // deep link from global search
+  const sp = useSearchParams();
+  const initialQ = sp.get("q") ?? ""; // deep link from global search
+  const addParam = sp.get("add");     // scanner: add this (unknown) barcode
+  const editParam = sp.get("edit");   // scanner: edit this product id
   const [q, setQ] = useState(initialQ);
   const [debouncedQ, setDebouncedQ] = useState(initialQ);
   const [cat, setCat] = useState("");
@@ -77,6 +80,29 @@ export function ProductsClient({
   const [importOpen, setImportOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<ProductRow | null>(null);
   const [editProduct, setEditProduct] = useState<ProductRow | null>(null);
+
+  // Scanner → open the SAME Add page, prefilled with the unknown barcode.
+  useEffect(() => { if (addParam) setOpen(true); }, [addParam]);
+
+  // Scanner → open the SAME page in Edit mode, fully prefilled for the product.
+  useEffect(() => {
+    if (!editParam) return;
+    let cancelled = false;
+    (async () => {
+      const page = await searchProducts({ productId: editParam, limit: 1 });
+      if (cancelled) return;
+      const row = page.rows[0];
+      if (row) { setEditProduct(row); setExpanded((s) => new Set(s).add(row.id)); }
+      else toast("That product could not be found.", "error");
+    })();
+    return () => { cancelled = true; };
+  }, [editParam, toast]);
+
+  // Drop the scan params from the URL once the drawer is dismissed/saved, so the
+  // same scan can re-open it later.
+  const clearScanParam = useCallback(() => {
+    if (addParam || editParam) router.replace("/admin/products");
+  }, [addParam, editParam, router]);
 
   async function archive(p: ProductRow, active: boolean) {
     const res = await setProductActive(p.id, active);
@@ -268,10 +294,11 @@ export function ProductsClient({
 
       <AddProductDrawer
         open={open}
-        onClose={() => setOpen(false)}
+        onClose={() => { setOpen(false); clearScanParam(); }}
         catTree={catTree}
         lowStockDefault={lowStockDefault}
-        onSaved={() => { setOpen(false); toast("Product added"); refreshList(); }}
+        initialBarcode={addParam}
+        onSaved={() => { setOpen(false); clearScanParam(); toast("Product added"); refreshList(); }}
         onError={(m) => toast(m, "error")}
       />
 
@@ -300,8 +327,8 @@ export function ProductsClient({
       <EditProductDrawer
         product={editProduct}
         catTree={catTree}
-        onClose={() => setEditProduct(null)}
-        onSaved={() => { setEditProduct(null); toast("Product updated"); refreshList(); }}
+        onClose={() => { setEditProduct(null); clearScanParam(); }}
+        onSaved={() => { setEditProduct(null); clearScanParam(); toast("Product updated"); refreshList(); }}
         onError={(m) => toast(m, "error")}
       />
     </div>
@@ -648,12 +675,14 @@ function cartesian(lists: string[][]): string[][] {
 }
 
 function AddProductDrawer({
-  open, onClose, catTree, lowStockDefault, onSaved, onError,
+  open, onClose, catTree, lowStockDefault, initialBarcode, onSaved, onError,
 }: {
   open: boolean;
   onClose: () => void;
   catTree: CatTreeRow[];
   lowStockDefault: number;
+  /** Barcode to pre-fill when the scanner opened this for an unknown code. */
+  initialBarcode?: string | null;
   onSaved: () => void;
   onError: (m: string) => void;
 }) {
@@ -668,6 +697,15 @@ function AddProductDrawer({
   const [matrix, setMatrix] = useState<VariantDraft[]>([]);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string>();
+
+  // Opened from a scan of an unknown barcode → prefill it as a simple product.
+  useEffect(() => {
+    if (open && initialBarcode) {
+      setHasVariants(false);
+      setSingle((s) => ({ ...s, barcode: initialBarcode }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, initialBarcode]);
 
   const reset = () => {
     setBase({ name: "", brand: "", category_id: "", base_sku: "", base_price: "", unit: "pcs", description: "" });

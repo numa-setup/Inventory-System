@@ -167,9 +167,17 @@ export async function updateProduct(
     })
     .eq("id", id);
   if (error) return { error: error.message };
+  revalidateProductSurfaces();
+  return { ok: true };
+}
+
+/** Edits to a product/variant should show up everywhere it's sold or listed. */
+function revalidateProductSurfaces() {
   revalidatePath("/admin/products");
   revalidatePath("/admin/stock");
-  return { ok: true };
+  revalidatePath("/admin/pos");
+  revalidatePath("/admin/dashboard");
+  revalidatePath("/shop");
 }
 
 /** Update a single variant's SKU / barcode / pricing / reorder / active flag. */
@@ -211,7 +219,7 @@ export async function updateVariant(
     }
   }
 
-  revalidatePath("/admin/products");
+  revalidateProductSurfaces();
   return { ok: true };
 }
 

@@ -56,6 +56,8 @@ export interface ProductsPage {
 export interface ProductsQuery {
   q?: string;
   categoryId?: string;
+  /** Fetch exactly one product by id (used when the scanner opens it to edit). */
+  productId?: string;
   offset?: number;
   limit?: number;
 }
@@ -82,6 +84,7 @@ export async function fetchProductsPage(supabase: SupabaseClient<any>, params: P
     .order("name")
     .order("id")
     .range(offset, offset + limit - 1);
+  if (params.productId) pq = pq.eq("id", params.productId);
   if (params.categoryId) pq = pq.eq("category_id", params.categoryId);
   if (term) pq = pq.or(`name.ilike.%${term}%,brand.ilike.%${term}%,sku.ilike.%${term}%`);
 

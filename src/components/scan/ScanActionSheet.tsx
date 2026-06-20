@@ -90,9 +90,9 @@ export function ScanActionSheet({
             <div className="flex items-center gap-2 rounded-xl border border-amber-icon/30 bg-amber-tile px-3 py-2 text-sm text-amber-text">
               <AlertTriangle className="h-4 w-4 shrink-0" /> Unknown barcode <span className="font-mono">{unknown}</span>
             </div>
-            <p className="text-sm text-text-secondary">This barcode isn’t on file. Create the product or link it while receiving stock.</p>
-            <Button className="w-full" onClick={() => { onClose(); router.push("/admin/products"); }}>
-              <ExternalLink className="h-4 w-4" /> Go to Products
+            <p className="text-sm text-text-secondary">This barcode isn’t on file yet. Open the Add Product page with it pre-filled and complete the details.</p>
+            <Button className="w-full" onClick={() => { onClose(); router.push(`/admin/products?add=${encodeURIComponent(unknown)}`); }}>
+              <ExternalLink className="h-4 w-4" /> Add this product
             </Button>
           </div>
         ) : item ? (
@@ -136,8 +136,8 @@ export function ScanActionSheet({
                 <Button variant="secondary" className="flex-col gap-1 py-2.5 text-xs" onClick={() => setMode("stock")}>
                   <Boxes className="h-4 w-4" /> Adjust
                 </Button>
-                <Button variant="secondary" className="flex-col gap-1 py-2.5 text-xs" onClick={() => { onClose(); router.push("/admin/products"); }}>
-                  <ExternalLink className="h-4 w-4" /> Open
+                <Button variant="secondary" className="flex-col gap-1 py-2.5 text-xs" onClick={() => { onClose(); router.push(`/admin/products?edit=${item.product_id}`); }}>
+                  <ExternalLink className="h-4 w-4" /> Edit
                 </Button>
               </div>
             )}
