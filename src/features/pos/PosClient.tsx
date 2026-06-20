@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import {
   Search, ShoppingCart, Plus, Minus, Trash2, X, Banknote,
   Loader2, Package, ScanLine, Camera, CheckCircle2, AlertTriangle, RotateCcw,
-  Keyboard, Pause, Clock, Play, WifiOff, RefreshCw,
+  Keyboard, Pause, Clock, Play, WifiOff, RefreshCw, Tag,
 } from "lucide-react";
 import { Input } from "@/components/ui/Input";
 import { CustomerSelect } from "./CustomerSelect";
@@ -25,6 +25,7 @@ import { ReturnsSheet } from "./ReturnsSheet";
 import { checkoutSale, type PaymentInput } from "./actions";
 import { enqueueSale, getQueue, removeFromQueue, queueCount, type QueuedSalePayload } from "@/lib/pos-queue";
 import { computeTotals, unitDiscount, round2 as round2px } from "@/lib/pricing";
+import { computePromotions, type Promotion, type PromoResult } from "@/lib/discounts";
 import { printReceipt, type ReceiptData } from "@/lib/receipt";
 
 /** Cart line: qty + a per-line discount (rupees). `manual` is set once the
@@ -108,6 +109,7 @@ function toPos(it: CatalogItem): PosProduct {
 
 export function PosClient({
   products: initialProducts, categories, barcodeIndex: initialBarcodeIndex, customers, store, cashierName,
+  promotions = [], categoryParents = {},
 }: {
   products: PosProduct[];
   categories: { id: string; name: string }[];
@@ -115,6 +117,8 @@ export function PosClient({
   customers: { id: string; name: string; phone: string | null }[];
   store: StoreSettings;
   cashierName: string;
+  promotions?: Promotion[];
+  categoryParents?: Record<string, string | null>;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -137,6 +141,7 @@ export function PosClient({
   const [cart, setCart] = useState<Map<string, CartEntry>>(new Map());
   const [customerId, setCustomerId] = useState("");
   const [discount, setDiscount] = useState("");
+  const [coupon, setCoupon] = useState("");
   const [processing, setProcessing] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [paymentOpen, setPaymentOpen] = useState(false);
@@ -292,9 +297,24 @@ export function PosClient({
   useScanHandler((code) => handleScan(code));
 
   const lines = [...cart.values()];
+  // Promotions (time-bound sales / category offers / coupons) layered on top of
+  // each line's everyday default discount. Computed with the same engine the
+  // server re-runs at checkout, so the previewed total matches what's charged.
+  const promo: PromoResult = computePromotions(
+    lines.map((l) => ({
+      key: l.p.variant_id,
+      product_id: l.p.product_id,
+      category_ids: [l.p.category_id, l.p.category_id ? categoryParents[l.p.category_id] : null].filter(Boolean) as string[],
+      qty: l.qty,
+      unit_price: l.p.price,
+    })),
+    promotions,
+    { couponCode: coupon },
+  );
+  const manualBill = Number(discount) || 0;
   const { subtotal, discount: disc, tax, total } = computeTotals(
     lines.map((l) => ({ qty: l.qty, unit_price: l.p.price, discount: l.discount })),
-    Number(discount) || 0,
+    manualBill + promo.totalDiscount,
     store.tax_percent,
   );
   const count = lines.reduce((s, l) => s + l.qty, 0);
@@ -319,6 +339,7 @@ export function PosClient({
         discount: l.discount,
       })),
       customer_id: customerId || null, payments, discount: Number(discount) || 0,
+      coupon_code: coupon || null,
     };
     const makeReceipt = (receiptNo: string, sub: number, dis: number, tx: number, tot: number): ReceiptData => ({
       store: {
@@ -357,7 +378,7 @@ export function PosClient({
     setReceiptData(receipt);
     setLastReceipt(receipt); // kept for F6 after the modal closes
     setPaymentOpen(false);
-    setCart(new Map()); setDiscount("");
+    setCart(new Map()); setDiscount(""); setCoupon("");
   }
 
   async function refreshQueue() { setQueued(await queueCount()); }
@@ -415,7 +436,7 @@ export function PosClient({
     };
     const next = [entry, ...held];
     setHeld(next); saveHeld(next);
-    setCart(new Map()); setDiscount(""); setCustomerId("");
+    setCart(new Map()); setDiscount(""); setCoupon(""); setCustomerId("");
     toast("Sale held");
     searchRef.current?.focus();
   }
@@ -457,7 +478,7 @@ export function PosClient({
         case "Escape":
           if (shortcutsOpen) return setShortcutsOpen(false);
           if (heldOpen) return setHeldOpen(false);
-          if (!anyModal && cart.size) { setCart(new Map()); setDiscount(""); flash(false, "Sale cleared"); }
+          if (!anyModal && cart.size) { setCart(new Map()); setDiscount(""); setCoupon(""); flash(false, "Sale cleared"); }
           return;
       }
       if (anyModal) return;
@@ -605,7 +626,7 @@ export function PosClient({
       <div className="hidden lg:block">
         <CartPanel
           lines={lines} subtotal={subtotal} discount={discount} setDiscount={setDiscount} total={total} tax={tax} taxPercent={store.tax_percent}
-          belowCost={belowCost}
+          belowCost={belowCost} promo={promo} coupon={coupon} setCoupon={setCoupon}
           customers={customers} customerId={customerId} setCustomerId={setCustomerId}
           setQty={setQty} remove={(id) => setQty(id, 0)} setLineDiscount={setLineDiscount} clearLineDiscount={clearLineDiscount}
           processing={processing} onCharge={openPayment} onHold={holdSale}
@@ -632,7 +653,7 @@ export function PosClient({
             </div>
             <CartPanel
               lines={lines} subtotal={subtotal} discount={discount} setDiscount={setDiscount} total={total} tax={tax} taxPercent={store.tax_percent}
-              belowCost={belowCost}
+              belowCost={belowCost} promo={promo} coupon={coupon} setCoupon={setCoupon}
               customers={customers} customerId={customerId} setCustomerId={setCustomerId}
               setQty={setQty} remove={(id) => setQty(id, 0)} setLineDiscount={setLineDiscount} clearLineDiscount={clearLineDiscount}
               processing={processing} onCharge={openPayment} onHold={holdSale} embedded
@@ -742,19 +763,22 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
 }
 
 function CartPanel({
-  lines, subtotal, discount, setDiscount, total, tax, taxPercent, belowCost,
+  lines, subtotal, discount, setDiscount, total, tax, taxPercent, belowCost, promo, coupon, setCoupon,
   customers, customerId, setCustomerId, setQty, remove, setLineDiscount, clearLineDiscount, processing, onCharge, onHold, embedded,
 }: {
   lines: CartEntry[];
   subtotal: number; discount: string; setDiscount: (v: string) => void; total: number;
   tax: number; taxPercent: number;
   belowCost: boolean;
+  promo: PromoResult; coupon: string; setCoupon: (v: string) => void;
   customers: { id: string; name: string; phone: string | null }[];
   customerId: string; setCustomerId: (v: string) => void;
   setQty: (id: string, qty: number) => void; remove: (id: string) => void;
   setLineDiscount: (id: string, value: number) => void; clearLineDiscount: (id: string) => void;
   processing: boolean; onCharge: () => void; onHold: () => void; embedded?: boolean;
 }) {
+  const couponEntered = coupon.trim().length > 0;
+  const couponApplied = promo.applied.some((a) => a.amount > 0 || a.type === "FREE_DELIVERY");
   return (
     <div className={cn("flex flex-col rounded-2xl border border-border bg-surface", embedded ? "max-h-[72vh]" : "h-full")}>
       <div className="flex items-center justify-between border-b border-border px-4 py-3">
@@ -824,6 +848,28 @@ function CartPanel({
         <div className="flex items-center justify-between text-sm">
           <span className="text-text-secondary">Subtotal</span><span className="tnum text-text-primary">{formatPKR(subtotal)}</span>
         </div>
+
+        {/* Applied promotions (auto sales / category offers / coupon) */}
+        {promo.applied.filter((a) => a.amount > 0 || a.type === "FREE_DELIVERY").map((a) => (
+          <div key={a.discount_id} className="flex items-center justify-between text-sm text-green-text">
+            <span className="flex items-center gap-1.5"><Tag className="h-3.5 w-3.5" /> {a.name}</span>
+            <span className="tnum">{a.type === "FREE_DELIVERY" ? "Free delivery" : `− ${formatPKR(a.amount)}`}</span>
+          </div>
+        ))}
+
+        {/* Coupon code */}
+        <div>
+          <div className="flex items-center gap-2">
+            <Input value={coupon} onChange={(e) => setCoupon(e.target.value)} placeholder="Coupon code" className="h-8 flex-1 uppercase" />
+            {couponEntered && <button type="button" onClick={() => setCoupon("")} className="text-xs text-text-tertiary hover:text-coral-text">Clear</button>}
+          </div>
+          {couponEntered && (
+            couponApplied
+              ? <p className="mt-1 text-[11px] font-medium text-green-text">Coupon applied.</p>
+              : <p className="mt-1 text-[11px] text-text-tertiary">No active offer matches this code (check the amount / dates).</p>
+          )}
+        </div>
+
         <div className="flex items-center justify-between gap-3 text-sm">
           <span className="text-text-secondary">Bill discount</span>
           <Input type="number" value={discount} onChange={(e) => setDiscount(e.target.value)} placeholder="0" className="h-8 w-28 text-right" />

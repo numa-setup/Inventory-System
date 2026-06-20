@@ -13,6 +13,8 @@ export interface CartItem {
   available: number;
   image?: string | null;
   category?: string | null;
+  category_id?: string | null;
+  category_parent_id?: string | null;
   unit?: string;
 }
 

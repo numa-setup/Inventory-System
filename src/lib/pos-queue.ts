@@ -10,6 +10,8 @@ export interface QueuedSalePayload {
   customer_id: string | null;
   payments: PaymentInput[];
   discount: number;
+  /** Entered coupon code, so promotions re-apply identically on replay. */
+  coupon_code?: string | null;
 }
 
 export interface QueuedSale {

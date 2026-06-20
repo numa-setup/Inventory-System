@@ -5,6 +5,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentUser } from "@/lib/auth";
 import { checkoutSchema, customerQuickSchema, firstIssue } from "@/lib/validation";
 import { computeTotals, paymentsSettle, round2 } from "@/lib/pricing";
+import { computePromotions, type PromoLine } from "@/lib/discounts";
+import { loadActivePromotions, recordRedemptions } from "@/features/discounts/promotions";
 
 export interface CartLine {
   variant_id: string;
@@ -56,6 +58,7 @@ export async function checkoutSale(input: {
   customer_id?: string | null;
   payments: PaymentInput[];
   discount?: number;
+  coupon_code?: string | null;
   idempotency_key: string;
 }): Promise<CheckoutResult | { error: string }> {
   const user = await getCurrentUser();
@@ -118,8 +121,29 @@ export async function checkoutSale(input: {
   const taxPercent = Number(settings?.tax_percent ?? 0);
   const prefix = ((settings?.store_info as Record<string, unknown> | null)?.invoice_prefix as string) || "INV";
 
-  // Shared money math (identical on the client) — line + bill discounts and tax.
-  const { subtotal, discount, tax, total } = computeTotals(input.lines, input.discount ?? 0, taxPercent);
+  // Re-run the promotions engine server-side (authoritative) so a tampered client
+  // can't invent a discount, then fold the promo total into the bill discount.
+  const productIds = [...new Set(input.lines.map((l) => l.product_id))];
+  const [{ data: prods }, { data: cats }, promotions] = await Promise.all([
+    productIds.length ? db.from("products").select("id, category_id").in("id", productIds) : Promise.resolve({ data: [] as { id: string; category_id: string | null }[] }),
+    db.from("categories").select("id, parent_id"),
+    loadActivePromotions(db),
+  ]);
+  const catOf = new Map((prods ?? []).map((p) => [p.id, p.category_id]));
+  const parentOf = new Map((cats ?? []).map((c) => [c.id, c.parent_id]));
+  const promoLines: PromoLine[] = input.lines.map((l) => {
+    const cid = catOf.get(l.product_id) ?? null;
+    return {
+      key: l.variant_id, product_id: l.product_id,
+      category_ids: [cid, cid ? parentOf.get(cid) : null].filter(Boolean) as string[],
+      qty: l.qty, unit_price: l.unit_price,
+    };
+  });
+  const promo = computePromotions(promoLines, promotions, { couponCode: input.coupon_code });
+  const effectiveBill = (input.discount ?? 0) + promo.totalDiscount;
+
+  // Shared money math (identical on the client) — line + bill/promo discounts and tax.
+  const { subtotal, discount, tax, total } = computeTotals(input.lines, effectiveBill, taxPercent);
   const profit = total - tax - cogsTotal;
 
   // Payments must settle the bill exactly (cash change is handled in the UI;
@@ -182,9 +206,13 @@ export async function checkoutSale(input: {
     }
   }
 
+  // Record which promotions applied (usage tracking + profit after discount).
+  if (promo.applied.length) await recordRedemptions(db, promo.applied, { channel: "POS", sale_id: saleId, profit });
+
   revalidatePath("/admin/stock");
   revalidatePath("/admin/products");
   revalidatePath("/admin/dashboard");
+  revalidatePath("/admin/discounts");
   return {
     ok: true, sale_id: saleId, receipt_no: sale.receipt_no, subtotal, discount, tax, total, profit,
     payments: input.payments,

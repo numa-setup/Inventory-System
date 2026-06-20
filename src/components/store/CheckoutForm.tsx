@@ -1,25 +1,41 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Loader2, Truck, CreditCard } from "lucide-react";
+import { Loader2, Truck, CreditCard, Tag } from "lucide-react";
 import { useCart } from "./CartProvider";
 import { ProductMedia } from "./ProductMedia";
 import { formatPKR } from "@/lib/utils";
 import { placeOrder } from "@/features/storefront/order-actions";
+import { computePromotions, type Promotion } from "@/lib/discounts";
 import type { DeliveryConfig } from "@/lib/storefront";
 
-export function CheckoutForm({ config }: { config: DeliveryConfig }) {
+export function CheckoutForm({ config, promotions = [] }: { config: DeliveryConfig; promotions?: Promotion[] }) {
   const router = useRouter();
   const { items, subtotal, clear } = useCart();
   const [form, setForm] = useState({ name: "", phone: "", address: "", email: "", note: "" });
   const [pay, setPay] = useState<"COD" | "ONLINE">("COD");
+  const [coupon, setCoupon] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
 
-  const deliveryFee = subtotal >= config.freeOver ? 0 : config.fee;
-  const total = subtotal + deliveryFee;
+  // Promotions preview (server re-checks authoritatively at placeOrder).
+  const promo = useMemo(() => computePromotions(
+    items.map((it) => ({
+      key: it.variant_id, product_id: it.product_id,
+      category_ids: [it.category_id, it.category_parent_id].filter(Boolean) as string[],
+      qty: it.qty, unit_price: it.price,
+    })),
+    promotions,
+    { couponCode: coupon },
+  ), [items, promotions, coupon]);
+
+  const discountedSubtotal = Math.max(subtotal - promo.totalDiscount, 0);
+  const deliveryFee = promo.freeDelivery ? 0 : discountedSubtotal >= config.freeOver ? 0 : config.fee;
+  const total = discountedSubtotal + deliveryFee;
+  const couponEntered = coupon.trim().length > 0;
+  const couponWorks = promo.applied.some((a) => a.amount > 0 || a.type === "FREE_DELIVERY");
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
   async function submit(e: React.FormEvent) {
@@ -34,6 +50,7 @@ export function CheckoutForm({ config }: { config: DeliveryConfig }) {
       })),
       customer: { name: form.name, phone: form.phone, address: form.address, email: form.email || null },
       payment_type: pay === "ONLINE" ? "CARD" : "COD",
+      coupon_code: coupon || null,
       note: form.note || null,
     });
     setBusy(false);
@@ -90,22 +107,55 @@ export function CheckoutForm({ config }: { config: DeliveryConfig }) {
           <div className="border border-store-line bg-store-paper p-6">
             <h2 className="font-serif text-xl text-store-ink">Your order</h2>
             <div className="mt-4 max-h-72 space-y-4 overflow-y-auto">
-              {items.map((it) => (
-                <div key={it.variant_id} className="flex gap-3">
-                  <div className="relative h-16 w-14 shrink-0 overflow-hidden bg-store-sand">
-                    <ProductMedia src={it.image} title={it.title} seed={it.slug} />
+              {items.map((it) => {
+                const lineOff = promo.lineDiscount.get(it.variant_id) ?? 0;
+                const gross = it.price * it.qty;
+                return (
+                  <div key={it.variant_id} className="flex gap-3">
+                    <div className="relative h-16 w-14 shrink-0 overflow-hidden bg-store-sand">
+                      <ProductMedia src={it.image} title={it.title} seed={it.slug} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate font-serif text-sm text-store-ink">{it.title}</div>
+                      <div className="text-xs text-store-muted">Qty {it.qty}{it.variantLabel ? ` · ${it.variantLabel}` : ""}</div>
+                    </div>
+                    <div className="text-right text-sm">
+                      {lineOff > 0 ? (
+                        <>
+                          <div className="text-store-muted line-through">{formatPKR(gross)}</div>
+                          <div className="text-coral-text">{formatPKR(gross - lineOff)}</div>
+                        </>
+                      ) : (
+                        <div className="text-store-charcoal">{formatPKR(gross)}</div>
+                      )}
+                    </div>
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate font-serif text-sm text-store-ink">{it.title}</div>
-                    <div className="text-xs text-store-muted">Qty {it.qty}{it.variantLabel ? ` · ${it.variantLabel}` : ""}</div>
-                  </div>
-                  <div className="text-sm text-store-charcoal">{formatPKR(it.price * it.qty)}</div>
-                </div>
-              ))}
+                );
+              })}
             </div>
             <div className="my-4 h-px bg-store-line" />
+
+            {/* Coupon */}
+            <div className="mb-3">
+              <div className="flex items-center gap-2">
+                <input value={coupon} onChange={(e) => setCoupon(e.target.value)} placeholder="Coupon code"
+                  className="w-full border border-store-line bg-store-paper px-3 py-2 text-sm uppercase text-store-ink focus:border-store-ink focus:outline-none" />
+              </div>
+              {couponEntered && (
+                couponWorks
+                  ? <p className="mt-1 text-xs font-medium text-green-text">Coupon applied.</p>
+                  : <p className="mt-1 text-xs text-store-muted">No active offer matches this code.</p>
+              )}
+            </div>
+
             <Line label="Subtotal" value={formatPKR(subtotal)} />
-            <Line label="Delivery" value={deliveryFee === 0 ? "Free" : formatPKR(deliveryFee)} />
+            {promo.applied.filter((a) => a.amount > 0).map((a) => (
+              <div key={a.discount_id} className="flex justify-between text-sm text-coral-text">
+                <span className="flex items-center gap-1.5"><Tag className="h-3.5 w-3.5" /> {a.name}</span>
+                <span>− {formatPKR(a.amount)}</span>
+              </div>
+            ))}
+            <Line label="Delivery" value={deliveryFee === 0 ? (promo.freeDelivery ? "Free (offer)" : "Free") : formatPKR(deliveryFee)} />
             {deliveryFee > 0 && <p className="mt-1 text-xs text-store-muted">Free delivery over {formatPKR(config.freeOver)}.</p>}
             <div className="my-4 h-px bg-store-line" />
             <div className="flex justify-between">

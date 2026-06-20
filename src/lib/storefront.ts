@@ -1,4 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
+import { productSalePrice, type Promotion } from "@/lib/discounts";
+import { PROMO_SELECT, mapPromotion } from "@/features/discounts/promotions";
 
 // Server-side data for the public storefront. Reads only published, public
 // catalogue data via the service client (it never reaches the browser).
@@ -9,15 +11,27 @@ export interface StoreProduct {
   title: string;
   description: string | null;
   price: number;
+  /** Discounted price from an active promotion (null = no sale). */
+  sale_price: number | null;
+  /** Short sale label e.g. "15% off" (null = no sale). */
+  sale_label: string | null;
   images: string[];
   image_url: string | null;
   category_id: string | null;
+  category_parent_id: string | null;
   category_name: string | null;
   brand: string | null;
   base_unit: string;
   has_variants: boolean;
   is_variable_weight: boolean;
   available: number;
+}
+
+/** Active promotions for the storefront (service client; schedule enforced at use). */
+export async function loadStorePromotions(): Promise<Promotion[]> {
+  const db = createAdminClient();
+  const { data } = await db.from("discounts").select(PROMO_SELECT).eq("active", true);
+  return (data ?? []).map(mapPromotion);
 }
 
 export interface StoreVariant {
@@ -43,18 +57,28 @@ export interface StoreInfo {
 }
 
 const SELECT =
-  "product_id, slug, title, description, price, images, image_url, category_id, category_name, brand, base_unit, has_variants, is_variable_weight, available, sort, created_at";
+  "product_id, slug, title, description, price, images, image_url, category_id, category_parent_id, category_name, brand, base_unit, has_variants, is_variable_weight, available, sort, created_at";
 
-function mapRow(r: Record<string, unknown>): StoreProduct {
+function mapRow(r: Record<string, unknown>, promotions: Promotion[] = []): StoreProduct {
+  const price = Number(r.price);
+  const category_id = (r.category_id as string) ?? null;
+  const category_parent_id = (r.category_parent_id as string) ?? null;
+  const sale = productSalePrice(
+    { product_id: r.product_id as string, category_ids: [category_id, category_parent_id].filter(Boolean) as string[], price },
+    promotions,
+  );
   return {
     product_id: r.product_id as string,
     slug: r.slug as string,
     title: r.title as string,
     description: (r.description as string) ?? null,
-    price: Number(r.price),
+    price,
+    sale_price: sale.compareAt != null ? sale.price : null,
+    sale_label: sale.label,
     images: (r.images as string[]) ?? [],
     image_url: (r.image_url as string) ?? null,
-    category_id: (r.category_id as string) ?? null,
+    category_id,
+    category_parent_id,
     category_name: (r.category_name as string) ?? null,
     brand: (r.brand as string) ?? null,
     base_unit: (r.base_unit as string) ?? "pcs",
@@ -94,20 +118,26 @@ export async function getCatalog(opts: { category?: string; q?: string; sort?: s
   else if (opts.sort === "price_desc") query = query.order("price", { ascending: false });
   else if (opts.sort === "new") query = query.order("created_at", { ascending: false });
   else query = query.order("sort").order("title");
-  const { data } = await query;
-  return (data ?? []).map(mapRow);
+  const [{ data }, promos] = await Promise.all([query, loadStorePromotions()]);
+  return (data ?? []).map((r) => mapRow(r, promos));
 }
 
 export async function getFeatured(limit = 8): Promise<StoreProduct[]> {
   const db = createAdminClient();
-  const { data } = await db.from("store_catalog").select(SELECT).gt("available", 0).order("sort").order("title").limit(limit);
-  return (data ?? []).map(mapRow);
+  const [{ data }, promos] = await Promise.all([
+    db.from("store_catalog").select(SELECT).gt("available", 0).order("sort").order("title").limit(limit),
+    loadStorePromotions(),
+  ]);
+  return (data ?? []).map((r) => mapRow(r, promos));
 }
 
 export async function getProductBySlug(slug: string): Promise<StoreProduct | null> {
   const db = createAdminClient();
-  const { data } = await db.from("store_catalog").select(SELECT).eq("slug", slug).maybeSingle();
-  return data ? mapRow(data) : null;
+  const [{ data }, promos] = await Promise.all([
+    db.from("store_catalog").select(SELECT).eq("slug", slug).maybeSingle(),
+    loadStorePromotions(),
+  ]);
+  return data ? mapRow(data, promos) : null;
 }
 
 export async function getProductVariants(productId: string): Promise<StoreVariant[]> {
@@ -186,6 +216,6 @@ export async function getRelated(categoryName: string | null, excludeSlug: strin
   const db = createAdminClient();
   let query = db.from("store_catalog").select(SELECT).neq("slug", excludeSlug).limit(limit);
   if (categoryName) query = query.eq("category_name", categoryName);
-  const { data } = await query.order("sort");
-  return (data ?? []).map(mapRow);
+  const [{ data }, promos] = await Promise.all([query.order("sort"), loadStorePromotions()]);
+  return (data ?? []).map((r) => mapRow(r, promos));
 }

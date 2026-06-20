@@ -30,6 +30,8 @@ export function AddToBag({ product, variants }: { product: StoreProduct; variant
         available: selected.available,
         image: selected.image_url ?? product.images[0] ?? product.image_url,
         category: product.category_name,
+        category_id: product.category_id,
+        category_parent_id: product.category_parent_id,
         unit: product.base_unit,
       },
       qty,
@@ -38,9 +40,24 @@ export function AddToBag({ product, variants }: { product: StoreProduct; variant
     setTimeout(() => setAdded(false), 1500);
   }
 
+  // Single-variant products show the promo sale price directly. Variant products
+  // keep the per-variant base price; the promo still applies at checkout.
+  const onSale = !showVariants && product.sale_price != null && product.sale_price < selected.price;
+
   return (
     <div className="space-y-5">
-      <div className="font-serif text-2xl text-store-ink">{formatPKR(selected.price)}</div>
+      {onSale ? (
+        <div className="flex items-center gap-3">
+          <span className="font-serif text-2xl text-coral-text">{formatPKR(product.sale_price!)}</span>
+          <span className="font-serif text-lg text-store-muted line-through">{formatPKR(selected.price)}</span>
+          {product.sale_label && <span className="bg-coral-icon px-2 py-0.5 text-[10px] uppercase tracking-[0.15em] text-white">{product.sale_label}</span>}
+        </div>
+      ) : (
+        <div className="flex items-center gap-3">
+          <span className="font-serif text-2xl text-store-ink">{formatPKR(selected.price)}</span>
+          {product.sale_label && <span className="bg-coral-icon px-2 py-0.5 text-[10px] uppercase tracking-[0.15em] text-white">{product.sale_label} at checkout</span>}
+        </div>
+      )}
 
       {showVariants && (
         <div>

@@ -4,7 +4,9 @@ import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { placeOrderSchema, firstIssue } from "@/lib/validation";
 import { round2 } from "@/lib/pricing";
-import { getDeliveryConfig } from "@/lib/storefront";
+import { computePromotions, type PromoLine } from "@/lib/discounts";
+import { getDeliveryConfig, loadStorePromotions } from "@/lib/storefront";
+import { recordRedemptions } from "@/features/discounts/promotions";
 import { notifyOrderPlaced } from "@/lib/notifications/dispatch";
 import { getGatewayConfig } from "@/lib/payments/gateway";
 import { creditOrder } from "@/lib/payments/credit";
@@ -14,6 +16,7 @@ export interface PlaceOrderInput {
   items: { variant_id: string; product_id: string; qty: number; unit_price: number; title: string; variant_label?: string | null }[];
   customer: { name: string; phone: string; address: string; email?: string | null };
   payment_type: "COD" | OnlineMethod;
+  coupon_code?: string | null;
   note?: string | null;
 }
 
@@ -38,9 +41,33 @@ export async function placeOrder(input: PlaceOrderInput): Promise<{ ok: true; or
   }
 
   const subtotal = round2(input.items.reduce((s, i) => s + i.qty * i.unit_price, 0));
-  const cfg = await getDeliveryConfig();
-  const deliveryFee = subtotal >= cfg.freeOver ? 0 : cfg.fee;
-  const total = round2(subtotal + deliveryFee);
+
+  // Apply promotions server-side (authoritative). Build each line's category
+  // chain so category sales match, then compute promo + coupon + free delivery.
+  const productIds = [...new Set(input.items.map((i) => i.product_id))];
+  const [{ data: prods }, { data: cats }, promotions, cfg] = await Promise.all([
+    productIds.length ? db.from("products").select("id, category_id").in("id", productIds) : Promise.resolve({ data: [] as { id: string; category_id: string | null }[] }),
+    db.from("categories").select("id, parent_id"),
+    loadStorePromotions(),
+    getDeliveryConfig(),
+  ]);
+  const catOf = new Map((prods ?? []).map((p) => [p.id, p.category_id]));
+  const parentOf = new Map((cats ?? []).map((c) => [c.id, c.parent_id]));
+  const promoLines: PromoLine[] = input.items.map((it) => {
+    const cid = catOf.get(it.product_id) ?? null;
+    return {
+      key: it.variant_id, product_id: it.product_id,
+      category_ids: [cid, cid ? parentOf.get(cid) : null].filter(Boolean) as string[],
+      qty: it.qty, unit_price: it.unit_price,
+    };
+  });
+  const promo = computePromotions(promoLines, promotions, { couponCode: input.coupon_code });
+  const discount = promo.totalDiscount;
+  const discountedSubtotal = Math.max(round2(subtotal - discount), 0);
+  const deliveryFee = promo.freeDelivery ? 0 : discountedSubtotal >= cfg.freeOver ? 0 : cfg.fee;
+  const total = round2(discountedSubtotal + deliveryFee);
+  // The headline discount id (largest contributor), for the orders.discount_id link.
+  const primaryDiscountId = [...promo.applied].sort((a, b) => b.amount - a.amount)[0]?.discount_id ?? null;
 
   // Link or create the customer by phone (for loyalty / repeat orders).
   const phone = input.customer.phone.trim();
@@ -64,7 +91,7 @@ export async function placeOrder(input: PlaceOrderInput): Promise<{ ok: true; or
       order_no: orderNo, channel: "web", customer_id: customerId,
       customer_name: input.customer.name.trim(), customer_phone: phone, address: input.customer.address.trim(),
       status: "PLACED", payment_type: input.payment_type,
-      subtotal, discount: 0, delivery_fee: deliveryFee, total,
+      subtotal, discount, delivery_fee: deliveryFee, total, discount_id: primaryDiscountId,
     })
     .select("id, order_no").single();
   if (error || !order) return { error: error?.message ?? "Could not place the order." };
@@ -89,6 +116,9 @@ export async function placeOrder(input: PlaceOrderInput): Promise<{ ok: true; or
     await db.from("orders").delete().eq("id", orderId); // cascades items
     return { error: "Some items just went out of stock. Please review your bag." };
   }
+
+  // Record which promotions applied (usage tracking).
+  if (promo.applied.length) await recordRedemptions(db, promo.applied, { channel: "WEB", order_id: orderId });
 
   const requiresPayment = input.payment_type !== "COD";
 
