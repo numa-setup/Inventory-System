@@ -54,11 +54,14 @@ export function ProductsClient({
   categories,
   catTree,
   isOwner,
+  lowStockDefault = 3,
 }: {
   initialPage: ProductsPage;
   categories: CatOption[];
   catTree: CatTreeRow[];
   isOwner: boolean;
+  /** Store-wide default low-stock threshold for new products (Part 3). */
+  lowStockDefault?: number;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -267,6 +270,7 @@ export function ProductsClient({
         open={open}
         onClose={() => setOpen(false)}
         catTree={catTree}
+        lowStockDefault={lowStockDefault}
         onSaved={() => { setOpen(false); toast("Product added"); refreshList(); }}
         onError={(m) => toast(m, "error")}
       />
@@ -644,14 +648,16 @@ function cartesian(lists: string[][]): string[][] {
 }
 
 function AddProductDrawer({
-  open, onClose, catTree, onSaved, onError,
+  open, onClose, catTree, lowStockDefault, onSaved, onError,
 }: {
   open: boolean;
   onClose: () => void;
   catTree: CatTreeRow[];
+  lowStockDefault: number;
   onSaved: () => void;
   onError: (m: string) => void;
 }) {
+  const reorderDefault = String(lowStockDefault);
   const [base, setBase] = useState({ name: "", brand: "", category_id: "", base_sku: "", base_price: "", unit: "pcs", description: "" });
   const [parentCat, setParentCat] = useState("");
   const [hasVariants, setHasVariants] = useState(false);
@@ -659,7 +665,7 @@ function AddProductDrawer({
 
   const topCats = catTree.filter((c) => !c.parent_id);
   const subCats = catTree.filter((c) => c.parent_id === parentCat);
-  const [single, setSingle] = useState({ sku: "", barcode: "", cost: "", reorder: "3", opening_qty: "", disc_type: "" as DiscType, disc_value: "" });
+  const [single, setSingle] = useState({ sku: "", barcode: "", cost: "", reorder: reorderDefault, opening_qty: "", disc_type: "" as DiscType, disc_value: "" });
   const [options, setOptions] = useState<{ name: string; values: string }[]>([{ name: "", values: "" }]);
   const [matrix, setMatrix] = useState<VariantDraft[]>([]);
   const [saving, setSaving] = useState(false);
@@ -670,7 +676,7 @@ function AddProductDrawer({
     setParentCat("");
     setHasVariants(false);
     setImages([]);
-    setSingle({ sku: "", barcode: "", cost: "", reorder: "3", opening_qty: "", disc_type: "", disc_value: "" });
+    setSingle({ sku: "", barcode: "", cost: "", reorder: reorderDefault, opening_qty: "", disc_type: "", disc_value: "" });
     setOptions([{ name: "", values: "" }]);
     setMatrix([]);
     setErr(undefined);
@@ -692,7 +698,7 @@ function AddProductDrawer({
         barcode: "",
         sale_price: base.base_price || "",
         cost: "",
-        reorder: "3",
+        reorder: reorderDefault,
         disc_type: "" as DiscType,
         disc_value: "",
         opening_qty: "",
@@ -875,7 +881,7 @@ function AddProductDrawer({
                 <Input type="number" value={single.cost} onChange={(e) => setSingle((s) => ({ ...s, cost: e.target.value }))} />
               </div>
               <div>
-                <Label>Reorder at</Label>
+                <Label>Low-stock alert at (qty)</Label>
                 <Input type="number" value={single.reorder} onChange={(e) => setSingle((s) => ({ ...s, reorder: e.target.value }))} />
               </div>
               <div>
@@ -883,7 +889,7 @@ function AddProductDrawer({
                 <Input type="number" value={single.opening_qty} onChange={(e) => setSingle((s) => ({ ...s, opening_qty: e.target.value }))} />
               </div>
             </div>
-            <Help>Cost price = what you pay your supplier. Reorder at = stock level that triggers a low-stock alert. Opening stock = how many you have on hand right now.</Help>
+            <Help>Cost price = what you pay your supplier. Low-stock alert at = this product&rsquo;s own threshold — you&rsquo;re warned when on-hand drops to it. Opening stock = how many you have on hand right now.</Help>
             <DiscountField
               type={single.disc_type}
               value={single.disc_value}
