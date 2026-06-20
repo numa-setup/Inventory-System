@@ -47,12 +47,12 @@ export function DashboardClient({ data }: { data: DashboardData }) {
 
       {/* KPI tiles */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-6">
-        <StatTile label="Sales" value={formatPKR(data.kpis.sales, { compact: true })} icon={Banknote} accent="blue" />
-        <StatTile label="Profit" value={formatPKR(data.kpis.profit, { compact: true })} icon={TrendingUp} accent="green" />
+        <StatTile label="Sales" value={formatPKR(data.kpis.sales, { compact: true })} icon={Banknote} accent="blue" sensitive />
+        <StatTile label="Profit" value={formatPKR(data.kpis.profit, { compact: true })} icon={TrendingUp} accent="green" sensitive />
         <StatTile label="Orders" value={formatNumber(data.kpis.orders)} icon={ClipboardList} accent="purple" />
         <StatTile label="Low Stock" value={formatNumber(data.kpis.lowStock)} icon={PackageX} accent="amber" />
-        <StatTile label="Udhaar" value={formatPKR(data.kpis.udhaar, { compact: true })} icon={Wallet} accent="coral" />
-        <StatTile label="Stock Value" value={formatPKR(data.kpis.stockValue, { compact: true })} icon={Boxes} accent="teal" />
+        <StatTile label="Udhaar" value={formatPKR(data.kpis.udhaar, { compact: true })} icon={Wallet} accent="coral" sensitive />
+        <StatTile label="Stock Value" value={formatPKR(data.kpis.stockValue, { compact: true })} icon={Boxes} accent="teal" sensitive />
       </div>
 
       {/* charts row 1 */}
