@@ -34,7 +34,9 @@ export async function quickAddCustomer(name: string, phone?: string | null) {
   return { ok: true as const, customer: { id: data.id as string, name: data.name as string, phone: (data.phone as string) ?? null } };
 }
 
-export type PayMethod = "CASH" | "CARD" | "BANK" | "JAZZCASH" | "EASYPAISA" | "WALLET" | "UDHAAR" | "COD";
+// Cash, Easypaisa, JazzCash and Udhaar at the till; COD for the e-commerce side.
+// Card and Bank Transfer were removed (Part 4).
+export type PayMethod = "CASH" | "JAZZCASH" | "EASYPAISA" | "UDHAAR" | "COD";
 export interface PaymentInput {
   method: PayMethod;
   amount: number;

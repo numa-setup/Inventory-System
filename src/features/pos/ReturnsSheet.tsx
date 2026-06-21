@@ -12,8 +12,8 @@ import { getSaleForReturn, processReturn, type SaleForReturn } from "./returns";
 import type { PayMethod } from "./actions";
 
 const REFUND_METHODS: { m: PayMethod; label: string }[] = [
-  { m: "CASH", label: "Cash" }, { m: "CARD", label: "Card" }, { m: "JAZZCASH", label: "JazzCash" },
-  { m: "EASYPAISA", label: "Easypaisa" }, { m: "BANK", label: "Bank" }, { m: "UDHAAR", label: "Adjust khata" },
+  { m: "CASH", label: "Cash" }, { m: "EASYPAISA", label: "Easypaisa" },
+  { m: "JAZZCASH", label: "JazzCash" }, { m: "UDHAAR", label: "Adjust khata" },
 ];
 
 export function ReturnsSheet({ open, onClose, initialReceipt }: { open: boolean; onClose: () => void; initialReceipt?: string }) {

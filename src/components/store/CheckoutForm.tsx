@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Loader2, Truck, CreditCard, Tag } from "lucide-react";
+import { Loader2, Truck, Smartphone, Tag } from "lucide-react";
 import { useCart } from "./CartProvider";
 import { ProductMedia } from "./ProductMedia";
 import { formatPKR } from "@/lib/utils";
@@ -15,7 +15,8 @@ export function CheckoutForm({ config, promotions = [] }: { config: DeliveryConf
   const router = useRouter();
   const { items, subtotal, clear } = useCart();
   const [form, setForm] = useState({ name: "", phone: "", address: "", email: "", note: "" });
-  const [pay, setPay] = useState<"COD" | "ONLINE">("COD");
+  const [pay, setPay] = useState<"COD" | "EASYPAISA" | "JAZZCASH">("COD");
+  const online = pay !== "COD";
   const [coupon, setCoupon] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
@@ -49,7 +50,7 @@ export function CheckoutForm({ config, promotions = [] }: { config: DeliveryConf
         title: it.title, variant_label: it.variantLabel,
       })),
       customer: { name: form.name, phone: form.phone, address: form.address, email: form.email || null },
-      payment_type: pay === "ONLINE" ? "CARD" : "COD",
+      payment_type: pay,
       coupon_code: coupon || null,
       note: form.note || null,
     });
@@ -93,9 +94,13 @@ export function CheckoutForm({ config, promotions = [] }: { config: DeliveryConf
               <input type="radio" name="pay" checked={pay === "COD"} onChange={() => setPay("COD")} className="accent-store-ink" />
               <span className="flex items-center gap-2 text-sm text-store-ink"><Truck className="h-4 w-4" /> Cash on Delivery</span>
             </label>
-            <label className={`flex cursor-pointer items-center gap-3 border px-4 py-3 transition-colors ${pay === "ONLINE" ? "border-store-ink bg-store-paper" : "border-store-line"}`}>
-              <input type="radio" name="pay" checked={pay === "ONLINE"} onChange={() => setPay("ONLINE")} className="accent-store-ink" />
-              <span className="flex items-center gap-2 text-sm text-store-ink"><CreditCard className="h-4 w-4" /> Pay online — Card / JazzCash / Easypaisa</span>
+            <label className={`flex cursor-pointer items-center gap-3 border px-4 py-3 transition-colors ${pay === "EASYPAISA" ? "border-store-ink bg-store-paper" : "border-store-line"}`}>
+              <input type="radio" name="pay" checked={pay === "EASYPAISA"} onChange={() => setPay("EASYPAISA")} className="accent-store-ink" />
+              <span className="flex items-center gap-2 text-sm text-store-ink"><Smartphone className="h-4 w-4" /> Easypaisa</span>
+            </label>
+            <label className={`flex cursor-pointer items-center gap-3 border px-4 py-3 transition-colors ${pay === "JAZZCASH" ? "border-store-ink bg-store-paper" : "border-store-line"}`}>
+              <input type="radio" name="pay" checked={pay === "JAZZCASH"} onChange={() => setPay("JAZZCASH")} className="accent-store-ink" />
+              <span className="flex items-center gap-2 text-sm text-store-ink"><Smartphone className="h-4 w-4" /> JazzCash</span>
             </label>
           </div>
 
@@ -163,9 +168,9 @@ export function CheckoutForm({ config, promotions = [] }: { config: DeliveryConf
               <span className="font-serif text-lg text-store-ink">{formatPKR(total)}</span>
             </div>
             <button type="submit" disabled={busy} className="mt-6 flex w-full items-center justify-center gap-2 bg-store-ink py-3.5 text-xs uppercase tracking-[0.18em] text-store-paper transition-opacity hover:opacity-90 disabled:opacity-50">
-              {busy && <Loader2 className="h-4 w-4 animate-spin" />} {pay === "ONLINE" ? "Continue to payment" : "Place order"}
+              {busy && <Loader2 className="h-4 w-4 animate-spin" />} {online ? "Continue to payment" : "Place order"}
             </button>
-            <p className="mt-3 text-center text-xs text-store-muted">{pay === "ONLINE" ? "Secure online payment on the next step." : "You’ll pay on delivery."}</p>
+            <p className="mt-3 text-center text-xs text-store-muted">{online ? "Secure online payment on the next step." : "You’ll pay on delivery."}</p>
           </div>
         </div>
       </form>

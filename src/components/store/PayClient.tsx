@@ -3,14 +3,13 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { CreditCard, Smartphone, Loader2, ShieldCheck, CheckCircle2 } from "lucide-react";
+import { Smartphone, Loader2, ShieldCheck, CheckCircle2 } from "lucide-react";
 import { formatPKR } from "@/lib/utils";
 import { confirmOnlinePayment, type OnlineMethod } from "@/features/storefront/order-actions";
 
-const METHODS: { id: OnlineMethod; label: string; Icon: typeof CreditCard }[] = [
-  { id: "CARD", label: "Card", Icon: CreditCard },
-  { id: "JAZZCASH", label: "JazzCash", Icon: Smartphone },
+const METHODS: { id: OnlineMethod; label: string; Icon: typeof Smartphone }[] = [
   { id: "EASYPAISA", label: "Easypaisa", Icon: Smartphone },
+  { id: "JAZZCASH", label: "JazzCash", Icon: Smartphone },
 ];
 
 export function PayClient({
@@ -21,10 +20,9 @@ export function PayClient({
   sandbox: boolean;
 }) {
   const router = useRouter();
-  const [method, setMethod] = useState<OnlineMethod>("CARD");
+  const [method, setMethod] = useState<OnlineMethod>("EASYPAISA");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
-  const [card, setCard] = useState({ number: "4242 4242 4242 4242", expiry: "12/28", cvc: "123" });
   const [mobile, setMobile] = useState("");
 
   const alreadyPaid = order.status !== "PLACED";
@@ -67,7 +65,7 @@ export function PayClient({
           <span className="font-serif text-2xl text-store-ink">{formatPKR(order.total)}</span>
         </div>
 
-        <div className="mt-6 grid grid-cols-3 gap-2">
+        <div className="mt-6 grid grid-cols-2 gap-2">
           {METHODS.map(({ id, label, Icon }) => (
             <button
               key={id}
@@ -80,17 +78,7 @@ export function PayClient({
         </div>
 
         <div className="mt-5 space-y-3">
-          {method === "CARD" ? (
-            <>
-              <Input label="Card number" value={card.number} onChange={(v) => setCard((c) => ({ ...c, number: v }))} />
-              <div className="grid grid-cols-2 gap-3">
-                <Input label="Expiry" value={card.expiry} onChange={(v) => setCard((c) => ({ ...c, expiry: v }))} />
-                <Input label="CVC" value={card.cvc} onChange={(v) => setCard((c) => ({ ...c, cvc: v }))} />
-              </div>
-            </>
-          ) : (
-            <Input label={`${method === "JAZZCASH" ? "JazzCash" : "Easypaisa"} mobile number`} value={mobile} onChange={setMobile} placeholder="03xx xxxxxxx" />
-          )}
+          <Input label={`${method === "JAZZCASH" ? "JazzCash" : "Easypaisa"} mobile number`} value={mobile} onChange={setMobile} placeholder="03xx xxxxxxx" />
         </div>
 
         {error && <p className="mt-4 text-sm text-coral-text">{error}</p>}

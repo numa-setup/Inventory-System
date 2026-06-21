@@ -314,7 +314,7 @@ async function main() {
   // ---- a couple of web orders ----
   console.log("Seeding web orders…");
   let webSeq = 1;
-  for (const [status, payment, custIdx] of [["PLACED", "COD", 2], ["CONFIRMED", "CARD", 4]]) {
+  for (const [status, payment, custIdx] of [["PLACED", "COD", 2], ["CONFIRMED", "JAZZCASH", 4]]) {
     const picks = [sellable[rand(0, sellable.length - 1)], sellable[rand(0, sellable.length - 1)]];
     let subtotal = 0;
     const items = picks.map((v) => { const qty = rand(1, 2); const line = v.price * qty; subtotal += line; return { v, qty, line }; });

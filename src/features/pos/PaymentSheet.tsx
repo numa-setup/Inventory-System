@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import {
-  Banknote, CreditCard, Landmark, Wallet, NotebookPen, Smartphone,
+  Banknote, NotebookPen, Smartphone,
   X, Plus, Trash2, Loader2, Check,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
@@ -15,16 +15,12 @@ import { quickAddCustomer, type PayMethod, type PaymentInput } from "./actions";
 
 const METHODS: { m: PayMethod; label: string; Icon: typeof Banknote }[] = [
   { m: "CASH", label: "Cash", Icon: Banknote },
-  { m: "CARD", label: "Card", Icon: CreditCard },
-  { m: "JAZZCASH", label: "JazzCash", Icon: Smartphone },
   { m: "EASYPAISA", label: "Easypaisa", Icon: Smartphone },
-  { m: "BANK", label: "Bank", Icon: Landmark },
-  { m: "WALLET", label: "Wallet", Icon: Wallet },
+  { m: "JAZZCASH", label: "JazzCash", Icon: Smartphone },
   { m: "UDHAAR", label: "Udhaar", Icon: NotebookPen },
 ];
 const LABEL: Record<PayMethod, string> = {
-  CASH: "Cash", CARD: "Card", BANK: "Bank", JAZZCASH: "JazzCash",
-  EASYPAISA: "Easypaisa", WALLET: "Wallet", UDHAAR: "Udhaar", COD: "COD",
+  CASH: "Cash", JAZZCASH: "JazzCash", EASYPAISA: "Easypaisa", UDHAAR: "Udhaar", COD: "COD",
 };
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -72,7 +68,7 @@ export function PaymentSheet({
   }
   function addSplit() {
     setSplit(true);
-    setLines((ls) => [...ls, { method: "CARD", amount: Math.max(0, remaining) }]);
+    setLines((ls) => [...ls, { method: "EASYPAISA", amount: Math.max(0, remaining) }]);
   }
   function setLineMethod(i: number, m: PayMethod) {
     setLines((ls) => ls.map((l, idx) => (idx === i ? { ...l, method: m } : l)));

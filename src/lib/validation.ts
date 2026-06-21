@@ -13,7 +13,7 @@ const optId = z.string().uuid().nullable().optional();
 const money = z.number().finite().nonnegative();
 const qty = z.number().finite().positive();
 const discountType = z.enum(["PERCENT", "FIXED"]).nullable().optional();
-export const payMethod = z.enum(["CASH", "CARD", "BANK", "JAZZCASH", "EASYPAISA", "WALLET", "UDHAAR", "COD"]);
+export const payMethod = z.enum(["CASH", "JAZZCASH", "EASYPAISA", "UDHAAR", "COD"]);
 
 // ---- POS ----------------------------------------------------------------
 export const checkoutSchema = z.object({
@@ -133,7 +133,7 @@ export const placeOrderSchema = z.object({
     address: z.string().trim().min(5, "Please enter your delivery address."),
     email: z.union([z.string().email(), z.literal("")]).nullable().optional(),
   }),
-  payment_type: z.enum(["COD", "CARD", "JAZZCASH", "EASYPAISA", "WALLET"]),
+  payment_type: z.enum(["COD", "JAZZCASH", "EASYPAISA"]),
   note: z.string().nullable().optional(),
 });
 

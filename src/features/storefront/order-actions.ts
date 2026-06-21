@@ -11,7 +11,7 @@ import { notifyOrderPlaced } from "@/lib/notifications/dispatch";
 import { getGatewayConfig } from "@/lib/payments/gateway";
 import { creditOrder } from "@/lib/payments/credit";
 
-export type OnlineMethod = "CARD" | "JAZZCASH" | "EASYPAISA" | "WALLET";
+export type OnlineMethod = "JAZZCASH" | "EASYPAISA";
 export interface PlaceOrderInput {
   items: { variant_id: string; product_id: string; qty: number; unit_price: number; title: string; variant_label?: string | null }[];
   customer: { name: string; phone: string; address: string; email?: string | null };
