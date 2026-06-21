@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Store, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { navForRole, type Role } from "./nav";
@@ -16,7 +16,14 @@ export function Sidebar({
   onClose: () => void;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
   const items = navForRole(role);
+
+  // Warm a tab's full RSC payload the moment the user shows intent (hover/focus),
+  // so the actual click resolves from the client router cache instantly. Next's
+  // default Link prefetch for dynamic routes only fetches the loading shell; an
+  // explicit prefetch pulls the data too.
+  const warm = (href: string) => router.prefetch(href);
 
   return (
     <>
@@ -67,7 +74,10 @@ export function Sidebar({
               <Link
                 key={item.href}
                 href={item.href}
+                prefetch
                 onClick={onClose}
+                onMouseEnter={() => warm(item.href)}
+                onFocus={() => warm(item.href)}
                 className={cn(
                   "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
                   active
