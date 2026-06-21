@@ -25,6 +25,10 @@ import { PRODUCTS_PAGE_SIZE, type ProductRow, type VariantRow, type ProductsPage
 import { LabelDialog, type LabelTarget } from "./LabelDialog";
 import { ImportDrawer } from "./ImportDrawer";
 import { ImageGallery } from "./ImageGallery";
+import { useScanHandler } from "@/components/scan/ScanProvider";
+import { parseScan } from "@/lib/barcode";
+import { ensureCatalog, lookupByBarcode } from "@/lib/catalog-cache";
+import { beepOk, beepError } from "@/lib/sound";
 
 export type { ProductRow, VariantRow };
 
@@ -80,6 +84,8 @@ export function ProductsClient({
   const [importOpen, setImportOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<ProductRow | null>(null);
   const [editProduct, setEditProduct] = useState<ProductRow | null>(null);
+  // Barcode pre-fill for Add, sourced from a live scan (vs. the ?add= URL param).
+  const [scanBarcode, setScanBarcode] = useState<string | null>(null);
 
   // Scanner → open the SAME Add page, prefilled with the unknown barcode.
   useEffect(() => { if (addParam) setOpen(true); }, [addParam]);
@@ -103,6 +109,26 @@ export function ProductsClient({
   const clearScanParam = useCallback(() => {
     if (addParam || editParam) router.replace("/admin/products");
   }, [addParam, editParam, router]);
+
+  // Context-aware scan on the Products screen (Part 2): a known barcode opens
+  // that product in Edit mode; an unknown one opens Add Product pre-filled with
+  // the scanned code. Resolves instantly from the in-memory catalogue.
+  useScanHandler(async (raw) => {
+    const parsed = parseScan(raw);
+    await ensureCatalog();
+    const hit = lookupByBarcode(parsed.lookupKey) || lookupByBarcode(parsed.barcode);
+    if (hit) {
+      beepOk();
+      const page = await searchProducts({ productId: hit.product_id, limit: 1 });
+      const row = page.rows[0];
+      if (row) { setEditProduct(row); setExpanded((s) => new Set(s).add(row.id)); }
+      else toast("That product could not be found.", "error");
+    } else {
+      beepError();
+      setScanBarcode(parsed.barcode);
+      setOpen(true);
+    }
+  });
 
   async function archive(p: ProductRow, active: boolean) {
     const res = await setProductActive(p.id, active);
@@ -155,6 +181,8 @@ export function ProductsClient({
   const refreshList = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ["products"] });
     router.refresh();
+    // Keep the scan catalogue in sync so a freshly added/edited barcode resolves.
+    void ensureCatalog({ force: true });
   }, [queryClient, router]);
 
   // Infinite scroll: load the next page when the sentinel scrolls into view.
@@ -294,11 +322,11 @@ export function ProductsClient({
 
       <AddProductDrawer
         open={open}
-        onClose={() => { setOpen(false); clearScanParam(); }}
+        onClose={() => { setOpen(false); setScanBarcode(null); clearScanParam(); }}
         catTree={catTree}
         lowStockDefault={lowStockDefault}
-        initialBarcode={addParam}
-        onSaved={() => { setOpen(false); clearScanParam(); toast("Product added"); refreshList(); }}
+        initialBarcode={addParam ?? scanBarcode}
+        onSaved={() => { setOpen(false); setScanBarcode(null); clearScanParam(); toast("Product added"); refreshList(); }}
         onError={(m) => toast(m, "error")}
       />
 

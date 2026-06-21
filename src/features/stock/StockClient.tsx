@@ -22,6 +22,10 @@ import { cn, formatPKR, formatNumber } from "@/lib/utils";
 import {
   stockIn, adjustStock, transferStock, cycleCount, getMovementHistory, type MoveRow,
 } from "./actions";
+import { useScanHandler } from "@/components/scan/ScanProvider";
+import { parseScan } from "@/lib/barcode";
+import { ensureCatalog, lookupByBarcode } from "@/lib/catalog-cache";
+import { beepOk, beepError } from "@/lib/sound";
 
 export interface PhysLocation { code: string; name: string }
 
@@ -80,6 +84,22 @@ export function StockClient({
     setShowInfo(localStorage.getItem("stock-explainer-dismissed") !== "1");
   }, []);
   const dismissInfo = () => { localStorage.setItem("stock-explainer-dismissed", "1"); setShowInfo(false); };
+
+  // Context-aware scan on the Stock screen (Part 2): a known barcode opens the
+  // stock-manage form (Stock In) with that variant preselected; an unknown one
+  // jumps to Add Product pre-filled so it can be created first.
+  useScanHandler(async (raw) => {
+    const parsed = parseScan(raw);
+    const match = rows.find((r) => r.barcode && (r.barcode === parsed.lookupKey || r.barcode === parsed.barcode));
+    if (match) { beepOk(); setAction({ type: "in", row: match }); return; }
+    // Catalogue fallback covers variants not in the current stock list.
+    await ensureCatalog();
+    const hit = lookupByBarcode(parsed.lookupKey) || lookupByBarcode(parsed.barcode);
+    const row = hit ? rows.find((r) => r.variant_id === hit.variant_id) : undefined;
+    if (row) { beepOk(); setAction({ type: "in", row }); return; }
+    beepError();
+    router.push(`/admin/products?add=${encodeURIComponent(parsed.barcode)}`);
+  });
 
   const filtered = useMemo(() => {
     const term = q.trim().toLowerCase();

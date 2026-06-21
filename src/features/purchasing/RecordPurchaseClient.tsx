@@ -67,6 +67,7 @@ export function RecordPurchaseClient({
   const [saving, setSaving] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [newItem, setNewItem] = useState(false);
+  const [newItemBarcode, setNewItemBarcode] = useState<string | null>(null);
   const [lastScan, setLastScan] = useState<{ ok: boolean; text: string } | null>(null);
   const scanTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -119,7 +120,10 @@ export function RecordPurchaseClient({
       : variants.find((x) => x.barcode === parsed.lookupKey || x.barcode === parsed.barcode);
     if (!v) {
       beepError();
-      flash(false, `Not in system: ${parsed.barcode} — use “New item” to add it`);
+      flash(false, `Not in system: ${parsed.barcode} — create it to add`);
+      // Open inline create pre-filled with the scanned code so it becomes a line.
+      setNewItemBarcode(parsed.barcode);
+      setNewItem(true);
       return;
     }
     const qty = parsed.isWeightEmbedded && parsed.weight ? parsed.weight : 1;
@@ -178,7 +182,7 @@ export function RecordPurchaseClient({
                 <PackagePlus className="h-4 w-4" /> Items bought
               </p>
               <div className="flex gap-2">
-                <Button type="button" variant="secondary" size="sm" onClick={() => setNewItem(true)}>
+                <Button type="button" variant="secondary" size="sm" onClick={() => { setNewItemBarcode(null); setNewItem(true); }}>
                   <Plus className="h-4 w-4" /> New item
                 </Button>
                 <Button type="button" variant="secondary" size="sm" onClick={() => setCameraOpen(true)}>
@@ -334,8 +338,9 @@ export function RecordPurchaseClient({
 
       <NewItemDrawer
         open={newItem}
-        onClose={() => setNewItem(false)}
-        onCreated={(v) => { setNewItem(false); addLine(v); void ensureCatalog({ force: true }); toast(`${v.product_name} created & added`); }}
+        initialBarcode={newItemBarcode}
+        onClose={() => { setNewItem(false); setNewItemBarcode(null); }}
+        onCreated={(v) => { setNewItem(false); setNewItemBarcode(null); addLine(v); void ensureCatalog({ force: true }); toast(`${v.product_name} created & added`); }}
         onError={(m) => toast(m, "error")}
       />
 
@@ -375,9 +380,11 @@ export function RecordPurchaseClient({
 /* ---------------- Quick-create item drawer ---------------- */
 
 function NewItemDrawer({
-  open, onClose, onCreated, onError,
+  open, initialBarcode, onClose, onCreated, onError,
 }: {
   open: boolean;
+  /** Pre-fill the barcode when opened from an unknown scan. */
+  initialBarcode?: string | null;
   onClose: () => void;
   onCreated: (v: VariantSearchItem) => void;
   onError: (m: string) => void;
@@ -389,6 +396,13 @@ function NewItemDrawer({
   const [barcode, setBarcode] = useState("");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string>();
+
+  // Sync the scanned barcode in whenever the drawer is (re)opened.
+  const [lastOpen, setLastOpen] = useState(false);
+  if (open !== lastOpen) {
+    setLastOpen(open);
+    if (open) setBarcode(initialBarcode ?? "");
+  }
 
   function reset() {
     setName(""); setUnit("pcs"); setCost(""); setPrice(""); setBarcode(""); setErr(undefined);
