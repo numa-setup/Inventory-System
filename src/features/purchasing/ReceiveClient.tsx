@@ -196,11 +196,20 @@ export function ReceiveClient({
     <div className="pb-24">
       <PageHeader
         title="Receive Stock"
-        subtitle="Add many variants in one receipt — scan or search each line"
+        subtitle="Goods arrived → add them to stock. Pick a PO to pre-fill it, or receive freely."
         actions={
           <Link href="/admin/purchasing"><Button variant="secondary" size="sm"><ArrowLeft className="h-4 w-4" /> Back</Button></Link>
         }
       />
+
+      <Card className="mb-4 flex items-start gap-2 p-3 text-sm text-text-secondary">
+        <ClipboardList className="mt-0.5 h-4 w-4 shrink-0 text-text-tertiary" />
+        <span>
+          Use this when a delivery turns up. If you’re just recording an everyday buy, {" "}
+          <Link href="/admin/purchasing/record" className="font-medium text-brand-600 hover:underline">Record Purchase</Link> is quicker.
+          Receiving against a purchase order updates that PO automatically.
+        </span>
+      </Card>
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
         <div className="min-w-0 space-y-4">

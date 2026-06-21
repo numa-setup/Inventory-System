@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   Plus, Truck, Wallet, FileText, PackageCheck, Loader2, Trash2, Building2,
-  Phone, Mail, ChevronRight,
+  Phone, Mail, ChevronRight, ChevronDown, Settings2, ShoppingCart, Info,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
@@ -97,7 +97,7 @@ export function PurchasingClient({
     <div>
       <PageHeader
         title="Purchasing"
-        subtitle="Suppliers, purchase orders and goods receiving"
+        subtitle="Buy stock, pay suppliers and keep your shelves full"
         actions={
           <div className="flex flex-wrap gap-2">
             <ExportMenu
@@ -110,20 +110,34 @@ export function PurchasingClient({
               ]}
               rows={suppliers.map((s) => ({ name: s.name, contact: s.contact_person ?? "", phone: s.phone ?? "", terms: s.payment_terms ?? "", payable: s.balance }))}
             />
-            <Button size="sm" variant="secondary" onClick={() => setNewPO(true)}><FileText className="h-4 w-4" /> New PO</Button>
-            <Link href="/admin/purchasing/receive"><Button size="sm"><PackageCheck className="h-4 w-4" /> Receive Stock</Button></Link>
+            <Link href="/admin/purchasing/record"><Button size="sm"><ShoppingCart className="h-4 w-4" /> Record Purchase</Button></Link>
           </div>
         }
       />
 
+      {/* Primary everyday action — record a purchase you've already bought */}
+      <Card className="mb-4 flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-start gap-3">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-600"><ShoppingCart className="h-5 w-5" /></div>
+          <div>
+            <h2 className="font-heading text-base font-bold text-text-primary">Record a purchase</h2>
+            <p className="text-sm text-text-secondary">
+              Bought stock from a supplier or the market? Add the items, choose paid or on credit, and save.
+              Stock, cost and payables update automatically — no purchase order needed.
+            </p>
+          </div>
+        </div>
+        <Link href="/admin/purchasing/record" className="shrink-0"><Button><ShoppingCart className="h-4 w-4" /> Record Purchase</Button></Link>
+      </Card>
+
       <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <StatTile label="Total Payables" value={formatPKR(kpis.payables, { compact: true })} icon={Wallet} accent="coral" />
+        <StatTile label="Total Payables" value={formatPKR(kpis.payables, { compact: true })} fullValue={formatPKR(kpis.payables)} icon={Wallet} accent="coral" hint="What you owe suppliers" />
         <StatTile label="Suppliers" value={kpis.suppliers} icon={Truck} accent="blue" />
-        <StatTile label="Open POs" value={kpis.openPOs} icon={FileText} accent="amber" />
+        <StatTile label="Open POs" value={kpis.openPOs} icon={FileText} accent="amber" hint="Pre-orders awaiting goods" />
       </div>
 
       <div className="mb-4 flex gap-1 rounded-lg border border-border bg-surface p-1">
-        {([["suppliers", "Suppliers"], ["pos", "Purchase Orders"], ["receipts", "Recent Receipts"]] as [Tab, string][]).map(([k, label]) => (
+        {([["suppliers", "Suppliers"], ["receipts", "Purchase History"], ["pos", "Purchase Orders"]] as [Tab, string][]).map(([k, label]) => (
           <button
             key={k}
             onClick={() => setTab(k)}
@@ -137,7 +151,7 @@ export function PurchasingClient({
       {tab === "suppliers" && (
         <Card>
           <div className="flex items-center justify-between border-b border-border px-4 py-3">
-            <span className="text-sm font-medium text-text-secondary">{suppliers.length} suppliers</span>
+            <span className="text-sm font-medium text-text-secondary">{suppliers.length} suppliers · tap one to see its payable &amp; history</span>
             <Button size="sm" variant="secondary" onClick={() => setAddSupplier(true)}><Plus className="h-4 w-4" /> Add Supplier</Button>
           </div>
           <DataTable
@@ -149,15 +163,34 @@ export function PurchasingClient({
         </Card>
       )}
 
-      {tab === "pos" && (
+      {tab === "receipts" && (
         <Card>
-          <DataTable columns={poCols} rows={pos} empty={<EmptyState icon={FileText} title="No purchase orders" description="Create a PO to plan a purchase." />} />
+          <div className="flex items-center gap-2 border-b border-border px-4 py-3 text-sm text-text-secondary">
+            <Info className="h-4 w-4 shrink-0 text-text-tertiary" />
+            Every purchase you record or receive shows here as a bill, with the stock it added.
+          </div>
+          <DataTable columns={receiptCols} rows={receipts} empty={<EmptyState icon={PackageCheck} title="No purchases yet" description="Record a purchase and it will appear here." />} />
         </Card>
       )}
 
-      {tab === "receipts" && (
+      {tab === "pos" && (
         <Card>
-          <DataTable columns={receiptCols} rows={receipts} empty={<EmptyState icon={PackageCheck} title="No receipts yet" description="Receive stock to see it here." />} />
+          <div className="flex flex-col gap-3 border-b border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="flex items-start gap-2 text-sm text-text-secondary">
+              <Info className="mt-0.5 h-4 w-4 shrink-0 text-text-tertiary" />
+              <span>
+                <span className="font-medium text-text-primary">Optional.</span> A purchase order pre-orders stock from a
+                supplier <span className="font-medium">before</span> it arrives. When the goods come, open
+                {" "}<Link href="/admin/purchasing/receive" className="text-brand-600 hover:underline">Receive Stock</Link> and
+                pick the PO to add it in. For an everyday buy, use <span className="font-medium">Record Purchase</span> instead.
+              </span>
+            </p>
+            <div className="flex shrink-0 gap-2">
+              <Link href="/admin/purchasing/receive"><Button size="sm" variant="secondary"><PackageCheck className="h-4 w-4" /> Receive Stock</Button></Link>
+              <Button size="sm" variant="secondary" onClick={() => setNewPO(true)}><FileText className="h-4 w-4" /> New PO</Button>
+            </div>
+          </div>
+          <DataTable columns={poCols} rows={pos} empty={<EmptyState icon={FileText} title="No purchase orders" description="POs are optional — create one only to pre-order stock before it arrives." />} />
         </Card>
       )}
 
@@ -187,7 +220,7 @@ export function SupplierDrawer({
 }: {
   open: boolean;
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (id?: string) => void;
   onError: (m: string) => void;
 }) {
   const empty: SupplierInput = {
@@ -196,6 +229,7 @@ export function SupplierDrawer({
   };
   const [form, setForm] = useState<SupplierInput>(empty);
   const [saving, setSaving] = useState(false);
+  const [advanced, setAdvanced] = useState(false);
   const [err, setErr] = useState<string>();
   const set = (k: keyof SupplierInput) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -203,13 +237,14 @@ export function SupplierDrawer({
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setErr(undefined);
-    if (!form.name?.trim()) { setErr("Company name is required."); return; }
+    if (!form.name?.trim()) { setErr("Supplier name is required."); return; }
     setSaving(true);
     const res = await createSupplier({ ...form, opening_balance: Number(form.opening_balance) || 0 });
     setSaving(false);
     if (res?.error) { setErr(res.error); onError(res.error); return; }
     setForm(empty);
-    onSaved();
+    setAdvanced(false);
+    onSaved(res.id);
   }
 
   return (
@@ -220,26 +255,55 @@ export function SupplierDrawer({
       </div>
     }>
       <form id="supplier-form" onSubmit={submit} className="space-y-4">
-        <div><Label>Company name *</Label><Input value={form.name} onChange={set("name")} placeholder="e.g. Karachi Wholesale Mart" /></div>
+        <p className="rounded-lg bg-surface-2 px-3 py-2 text-xs text-text-secondary">
+          A supplier is anyone you buy stock from (a wholesaler, a distributor, the bakery van).
+          Only the name is required — add the rest if you have it.
+        </p>
+        <div><Label>Supplier name *</Label><Input value={form.name} onChange={set("name")} placeholder="e.g. Karachi Wholesale Mart" /></div>
         <div className="grid grid-cols-2 gap-3">
-          <div><Label>Contact person</Label><Input value={form.contact_person ?? ""} onChange={set("contact_person")} /></div>
           <div><Label>Phone</Label><Input value={form.phone ?? ""} onChange={set("phone")} placeholder="03xx-xxxxxxx" /></div>
+          <div><Label>City</Label><Input value={form.city ?? ""} onChange={set("city")} placeholder="e.g. Lahore" /></div>
         </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div><Label>Email</Label><Input type="email" value={form.email ?? ""} onChange={set("email")} /></div>
-          <div><Label>City</Label><Input value={form.city ?? ""} onChange={set("city")} /></div>
+        <div><Label>Address</Label><Input value={form.address ?? ""} onChange={set("address")} placeholder="Shop / market address" /></div>
+        <div>
+          <Label>Opening balance (₨)</Label>
+          <Input type="number" value={String(form.opening_balance ?? "")} onChange={set("opening_balance")} placeholder="0" />
+          <p className="mt-1 text-xs text-text-tertiary">Money you already owed this supplier before using the system. Leave 0 if none.</p>
         </div>
-        <div><Label>Address</Label><Input value={form.address ?? ""} onChange={set("address")} /></div>
-        <div className="grid grid-cols-2 gap-3">
-          <div><Label>NTN / Tax #</Label><Input value={form.ntn ?? ""} onChange={set("ntn")} /></div>
-          <div><Label>Payment terms</Label><Input value={form.payment_terms ?? ""} onChange={set("payment_terms")} placeholder="e.g. 30 days" /></div>
+        <div><Label>Notes</Label><Input value={form.notes ?? ""} onChange={set("notes")} placeholder="Anything useful — delivery days, contact name…" /></div>
+
+        <div className="rounded-lg border border-border">
+          <button
+            type="button"
+            onClick={() => setAdvanced((v) => !v)}
+            className="flex w-full items-center justify-between px-3 py-2 text-sm font-medium text-text-secondary hover:bg-surface-2"
+          >
+            <span className="flex items-center gap-2"><Settings2 className="h-4 w-4" /> Advanced (optional)</span>
+            {advanced ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+          </button>
+          {advanced && (
+            <div className="space-y-3 border-t border-border p-3">
+              <p className="text-xs text-text-tertiary">Most general stores can skip these — they’re only for formal/tax accounting.</p>
+              <div><Label>Contact person</Label><Input value={form.contact_person ?? ""} onChange={set("contact_person")} placeholder="Who you usually deal with" /></div>
+              <div><Label>Email</Label><Input type="email" value={form.email ?? ""} onChange={set("email")} /></div>
+              <div>
+                <Label>NTN / Tax #</Label>
+                <Input value={form.ntn ?? ""} onChange={set("ntn")} />
+                <p className="mt-1 text-xs text-text-tertiary">Tax registration number — only if you file sales tax.</p>
+              </div>
+              <div>
+                <Label>Payment terms</Label>
+                <Input value={form.payment_terms ?? ""} onChange={set("payment_terms")} placeholder="e.g. Cash, 30 days" />
+                <p className="mt-1 text-xs text-text-tertiary">How long this supplier gives you to pay.</p>
+              </div>
+              <div>
+                <Label>Bank details</Label>
+                <Input value={form.bank_details ?? ""} onChange={set("bank_details")} />
+                <p className="mt-1 text-xs text-text-tertiary">Account/IBAN for online transfers, if you pay that way.</p>
+              </div>
+            </div>
+          )}
         </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div><Label>Opening balance (₨)</Label><Input type="number" value={String(form.opening_balance ?? "")} onChange={set("opening_balance")} placeholder="0" /></div>
-          <div><Label>Bank details</Label><Input value={form.bank_details ?? ""} onChange={set("bank_details")} /></div>
-        </div>
-        <p className="-mt-1 text-xs text-text-tertiary">Opening balance = money you already owe this supplier today (leave 0 if none).</p>
-        <div><Label>Notes</Label><Input value={form.notes ?? ""} onChange={set("notes")} /></div>
         <FieldError message={err} />
       </form>
     </Drawer>

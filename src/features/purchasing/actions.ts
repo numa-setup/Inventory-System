@@ -62,7 +62,7 @@ export async function createSupplier(input: SupplierInput) {
   if (!input.name.trim()) return { error: "Company name is required." };
   const db = createAdminClient();
   const opening = input.opening_balance ?? 0;
-  const { error } = await db.from("suppliers").insert({
+  const { data, error } = await db.from("suppliers").insert({
     name: input.name.trim(),
     contact_person: input.contact_person || null,
     phone: input.phone || null,
@@ -75,10 +75,10 @@ export async function createSupplier(input: SupplierInput) {
     notes: input.notes || null,
     opening_balance: opening,
     balance: opening,
-  });
+  }).select("id, name").single();
   if (error) return { error: error.message };
   revalidatePath("/admin/purchasing");
-  return { ok: true };
+  return { ok: true, id: data?.id as string, name: data?.name as string };
 }
 
 export async function updateSupplier(id: string, input: SupplierInput) {
@@ -178,19 +178,26 @@ export interface ReceiveLineInput {
   expiry?: string | null;
 }
 
-export async function receiveStock(input: {
-  supplier_id?: string | null;
-  po_id?: string | null;
-  location_code?: string;
-  note?: string | null;
-  lines: ReceiveLineInput[];
-}) {
-  const user = await requireManager();
-  if (!user) return { error: "Not authorized." };
+/**
+ * Shared core for putting goods into stock: writes the bill (GRN) + items, posts
+ * one stock-in ledger move per line (the trigger maintains weighted-average cost),
+ * syncs each variant's standard cost, and advances any linked PO lines. Callers
+ * handle the supplier-ledger / payment side themselves.
+ */
+async function postGoodsReceipt(
+  db: Db,
+  userId: string,
+  input: {
+    supplier_id?: string | null;
+    po_id?: string | null;
+    location_code?: string;
+    note?: string | null;
+    lines: ReceiveLineInput[];
+  },
+): Promise<{ error: string } | { grn_no: string; grn_id: string; total: number }> {
   const lines = input.lines.filter((l) => l.variant_id && l.qty > 0);
-  if (!lines.length) return { error: "Add at least one line to receive." };
+  if (!lines.length) return { error: "Add at least one line." };
 
-  const db = createAdminClient();
   const { data: locs } = await db.from("locations").select("id, code");
   const sup = locs?.find((l) => l.code === "SUP")?.id;
   const dest = locs?.find((l) => l.code === (input.location_code ?? "MAIN"))?.id;
@@ -200,7 +207,7 @@ export async function receiveStock(input: {
   const grnNo = `GRN-${Date.now().toString().slice(-8)}`;
   const { data: grn, error: gErr } = await db.from("goods_receipts").insert({
     grn_no: grnNo, po_id: input.po_id || null, supplier_id: input.supplier_id || null,
-    location_id: dest, received_by: user.id, total, note: input.note || null,
+    location_id: dest, received_by: userId, total, note: input.note || null,
   }).select("id").single();
   if (gErr) return { error: gErr.message };
 
@@ -214,7 +221,7 @@ export async function receiveStock(input: {
       product_id: l.product_id, variant_id: l.variant_id, lot_id: lotId, qty: l.qty,
       from_location_id: sup, to_location_id: dest, unit_cost: l.unit_cost,
       reference_type: "PURCHASE", reference_id: grn.id, source: "MANUAL",
-      created_by: user.id, note: `Goods receipt ${grnNo}`,
+      created_by: userId, note: `Goods receipt ${grnNo}`,
     });
     // sync the variant's standard cost to the latest purchase cost
     await db.from("product_variants").update({ cost: l.unit_cost }).eq("id", l.variant_id);
@@ -227,25 +234,179 @@ export async function receiveStock(input: {
     }
   }
 
-  // supplier payable += received value
-  if (input.supplier_id) {
-    const { data: s } = await db.from("suppliers").select("balance").eq("id", input.supplier_id).single();
-    const newBalance = Number(s?.balance ?? 0) + total;
-    await db.from("supplier_ledger").insert({
-      supplier_id: input.supplier_id, type: "CHARGE", amount: total,
-      reference: grnNo, balance_after: newBalance, created_by: user.id,
-    });
-    await db.from("suppliers").update({ balance: newBalance }).eq("id", input.supplier_id);
-  }
-
-  // update PO status (partial vs received)
   if (input.po_id) await refreshPOStatus(db, input.po_id);
+  return { grn_no: grnNo, grn_id: grn.id as string, total };
+}
 
+/** Post a supplier-ledger charge (and optional payment) for a purchase. */
+async function chargeSupplier(
+  db: Db,
+  userId: string,
+  supplierId: string,
+  reference: string,
+  charge: number,
+  paid: number,
+) {
+  const { data: s } = await db.from("suppliers").select("balance").eq("id", supplierId).single();
+  let balance = Number(s?.balance ?? 0);
+  if (charge > 0) {
+    balance += charge;
+    await db.from("supplier_ledger").insert({
+      supplier_id: supplierId, type: "CHARGE", amount: charge,
+      reference, balance_after: balance, created_by: userId,
+    });
+  }
+  if (paid > 0) {
+    balance -= paid;
+    await db.from("supplier_ledger").insert({
+      supplier_id: supplierId, type: "PAYMENT", amount: paid,
+      reference: `${reference} payment`, balance_after: balance, created_by: userId,
+    });
+  }
+  await db.from("suppliers").update({ balance }).eq("id", supplierId);
+}
+
+function revalidatePurchasing(supplierId?: string | null) {
   revalidatePath("/admin/purchasing");
   revalidatePath("/admin/stock");
   revalidatePath("/admin/products");
   revalidatePath("/admin/dashboard");
-  return { ok: true, grn_no: grnNo };
+  revalidatePath("/admin/reports");
+  if (supplierId) revalidatePath(`/admin/purchasing/suppliers/${supplierId}`);
+}
+
+export async function receiveStock(input: {
+  supplier_id?: string | null;
+  po_id?: string | null;
+  location_code?: string;
+  note?: string | null;
+  lines: ReceiveLineInput[];
+}) {
+  const user = await requireManager();
+  if (!user) return { error: "Not authorized." };
+  const db = createAdminClient();
+
+  const res = await postGoodsReceipt(db, user.id, input);
+  if ("error" in res) return { error: res.error };
+
+  // Receiving (the goods-arrived flow) puts the full value onto the supplier payable.
+  if (input.supplier_id) await chargeSupplier(db, user.id, input.supplier_id, res.grn_no, res.total, 0);
+
+  revalidatePurchasing(input.supplier_id);
+  return { ok: true, grn_no: res.grn_no };
+}
+
+/**
+ * The everyday purchase flow: choose a supplier (or a cash purchase), add the
+ * items bought, mark it paid (cash) or on credit (with an optional partial
+ * payment now). Increases stock, updates weighted-average cost, saves the bill in
+ * purchase history, and updates the supplier payable for whatever stays unpaid.
+ */
+export async function recordPurchase(input: {
+  supplier_id?: string | null;
+  location_code?: string;
+  note?: string | null;
+  payment: "paid" | "credit";
+  amount_paid?: number;
+  lines: ReceiveLineInput[];
+}) {
+  const user = await requireManager();
+  if (!user) return { error: "Not authorized." };
+  const lines = input.lines.filter((l) => l.variant_id && l.qty > 0);
+  if (!lines.length) return { error: "Add at least one item to the purchase." };
+  if (input.payment === "credit" && !input.supplier_id) {
+    return { error: "Choose a supplier for a credit purchase — cash purchases must be paid." };
+  }
+
+  const db = createAdminClient();
+  const res = await postGoodsReceipt(db, user.id, { ...input, po_id: null, lines });
+  if ("error" in res) return { error: res.error };
+
+  const total = res.total;
+  // Paid (cash) settles in full; on credit, only the entered amount is paid now.
+  const paid = input.payment === "paid"
+    ? total
+    : Math.max(0, Math.min(Number(input.amount_paid) || 0, total));
+
+  if (input.supplier_id) await chargeSupplier(db, user.id, input.supplier_id, res.grn_no, total, paid);
+
+  revalidatePurchasing(input.supplier_id);
+  return { ok: true, grn_no: res.grn_no, total, paid, credit: total - paid };
+}
+
+/**
+ * Quick-create a simple (no-variant) item from inside the Record Purchase flow,
+ * so a cashier can buy something that isn't in the system yet. Returns the new
+ * variant in the same shape the line picker uses.
+ */
+export async function quickCreatePurchaseItem(input: {
+  name: string;
+  base_unit?: string;
+  cost: number;
+  sale_price: number;
+  barcode?: string | null;
+  category_id?: string | null;
+}) {
+  const user = await requireManager();
+  if (!user) return { error: "Not authorized." };
+  const name = input.name.trim();
+  if (!name) return { error: "Item name is required." };
+  const db = createAdminClient();
+
+  const sku = `QP-${Date.now().toString(36).toUpperCase()}`;
+  const slug = `${name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")}-${sku.toLowerCase()}`;
+  const payload = {
+    name,
+    brand: null,
+    category_id: input.category_id || null,
+    description: null,
+    base_unit: input.base_unit || "pcs",
+    base_price: Number(input.sale_price) || 0,
+    has_variants: false,
+    options: [],
+    variants: [{
+      sku,
+      barcode: input.barcode?.trim() || null,
+      sale_price: Number(input.sale_price) || 0,
+      cost: Number(input.cost) || 0,
+      reorder_point: 0,
+      option_values: [],
+      opening_qty: null,
+    }],
+    slug,
+    created_by: user.id,
+  };
+  const { data: productId, error } = await db.rpc("create_product_full", { payload });
+  if (error) {
+    const msg = error.message.includes("duplicate key") && error.message.includes("barcode")
+      ? "That barcode is already used by another product."
+      : error.message;
+    return { error: msg };
+  }
+
+  const { data: variant } = await db
+    .from("product_variants")
+    .select("id, sku, cost, sale_price")
+    .eq("product_id", productId as string)
+    .eq("is_default", true)
+    .single();
+  if (!variant) return { error: "Item created but its variant could not be loaded." };
+
+  revalidatePath("/admin/products");
+  revalidatePath("/admin/stock");
+  return {
+    ok: true as const,
+    item: {
+      variant_id: variant.id as string,
+      product_id: productId as string,
+      product_name: name,
+      label: "Default",
+      sku: variant.sku as string,
+      barcode: input.barcode?.trim() || null,
+      cost: Number(variant.cost),
+      sale_price: Number(variant.sale_price),
+    },
+  };
 }
 
 async function refreshPOStatus(db: Db, poId: string) {
