@@ -117,6 +117,11 @@ export function ProductsClient({
     const parsed = parseScan(raw);
     await ensureCatalog();
     const hit = lookupBarcodeLoose(parsed.lookupKey) ?? lookupBarcodeLoose(parsed.barcode);
+    try {
+      if (typeof window !== "undefined" && window.localStorage.getItem("scanDebug") === "1") {
+        console.info("[scan] products handler", { raw, lookupKey: parsed.lookupKey, barcode: parsed.barcode, matched: hit ? hit.product_name : null });
+      }
+    } catch { /* ignore */ }
     if (hit) {
       beepOk();
       const page = await searchProducts({ productId: hit.product_id, limit: 1 });

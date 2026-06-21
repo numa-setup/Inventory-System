@@ -31,7 +31,7 @@ export function ScanProvider({ children }: { children: React.ReactNode }) {
   const [item, setItem] = useState<CatalogItem | null>(null);
   const [unknown, setUnknown] = useState<string | null>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
-  const [pulse, setPulse] = useState(0); // bumps on every scan so the indicator flashes
+  const [lastScan, setLastScan] = useState<{ code: string; n: number } | null>(null);
 
   // Warm the catalogue cache so global scans resolve instantly.
   useEffect(() => { void ensureCatalog(); }, []);
@@ -51,7 +51,13 @@ export function ScanProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const onScan = useCallback((code: string) => {
-    setPulse((p) => p + 1); // visible confirmation that a scan was received
+    setLastScan((s) => ({ code, n: (s?.n ?? 0) + 1 })); // visible confirmation a scan arrived
+    const hasHandler = !!handlerRef.current;
+    try {
+      if (typeof window !== "undefined" && window.localStorage.getItem("scanDebug") === "1") {
+        console.info("[scan] dispatch", { code, routedTo: hasHandler ? "screen handler" : "scan-anywhere sheet" });
+      }
+    } catch { /* ignore */ }
     if (handlerRef.current) handlerRef.current(code);
     else resolveGlobal(code);
   }, [resolveGlobal]);
@@ -64,7 +70,7 @@ export function ScanProvider({ children }: { children: React.ReactNode }) {
   return (
     <Ctx.Provider value={{ register, openCamera }}>
       {children}
-      <ScannerIndicator pulse={pulse} />
+      <ScannerIndicator lastScan={lastScan} />
       <ScanActionSheet item={item} unknown={unknown} onClose={() => { setItem(null); setUnknown(null); }} />
       <CameraScanner
         open={cameraOpen}
@@ -76,15 +82,15 @@ export function ScanProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
-/** Always-visible "listening" pill that flashes each time a scan is received. */
-function ScannerIndicator({ pulse }: { pulse: number }) {
+/** Always-visible "listening" pill that flashes the captured code on each scan. */
+function ScannerIndicator({ lastScan }: { lastScan: { code: string; n: number } | null }) {
   const [flash, setFlash] = useState(false);
   useEffect(() => {
-    if (!pulse) return;
+    if (!lastScan) return;
     setFlash(true);
-    const t = setTimeout(() => setFlash(false), 450);
+    const t = setTimeout(() => setFlash(false), 1400);
     return () => clearTimeout(t);
-  }, [pulse]);
+  }, [lastScan]);
   return (
     <div
       className={
@@ -96,7 +102,7 @@ function ScannerIndicator({ pulse }: { pulse: number }) {
       aria-live="polite"
     >
       <ScanLine className={"h-3.5 w-3.5 " + (flash ? "animate-pulse" : "")} />
-      {flash ? "Scanned" : "Scanner ready"}
+      {flash && lastScan ? `Scanned ${lastScan.code}` : "Scanner ready"}
     </div>
   );
 }

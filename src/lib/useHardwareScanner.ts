@@ -6,30 +6,41 @@ import { useEffect, useRef } from "react";
 //
 // A wedge scanner "types" the barcode as a very fast keystroke burst, usually
 // ending in Enter (sometimes Tab, sometimes nothing). We tell a scan apart from
-// human typing purely by TIMING: characters of one barcode arrive only a few ms
-// apart, far faster than any person types. So:
+// human typing purely by TIMING: the characters of one barcode arrive only a few
+// ms apart — far faster, and far more evenly, than any person types.
 //
 //   • capture keydown at the document level (capture phase, before React),
-//   • buffer characters whose inter-key gap is under ~35ms (machine speed),
-//   • flush the buffer as a scan on Enter/Tab OR after ~70ms of inactivity,
-//   • slow (human) typing keeps resetting the buffer and never flushes.
+//   • accumulate characters; a gap > NEW_SEQUENCE_GAP starts a fresh sequence,
+//   • on Enter/Tab (or after FLUSH_IDLE_MS of silence) decide by the AVERAGE
+//     inter-key time whether the buffer was a scan, and if so route it.
 //
-// It works EVEN when a text input is focused: once a burst is detected we
-// preventDefault the keys so the digits don't land in the field, route the code
-// to the scan handler, and clean up the one character that may have leaked in
-// before we were sure it was a scan. The cashier never has to click off a field.
+// Using the average (not a hard per-key cutoff) makes it tolerant of a scanner
+// that runs a little slower or jitters, while still rejecting human typing.
 //
-// Dedicated barcode-entry boxes (Add Product barcode, variant pickers, …) opt
-// OUT with `data-scan-input` so a scan there fills the field as intended.
+// It works EVEN when a text input is focused: characters arriving at machine
+// speed are consumed (preventDefault) so they don't land in the field; the few
+// that may leak in before we're sure are stripped back out on flush. The cashier
+// never has to click off a field. Dedicated barcode boxes opt out via
+// `data-scan-input` so a scan there fills the field as intended.
 
-const BURST_GAP_MS = 35; // max gap between two keys within one scanner burst
-const FLUSH_IDLE_MS = 70; // flush a buffered burst this long after the last key
-const MIN_SCAN_LENGTH = 3; // shorter "bursts" are never treated as a barcode
+const CONSUME_GAP_MS = 55; // keep a key out of a focused field if it arrives this fast
+const AVG_GAP_MS = 55; // a buffer whose mean inter-key gap is <= this is a scan
+const NEW_SEQUENCE_GAP_MS = 200; // a longer pause starts a brand-new sequence
+const FLUSH_IDLE_MS = 120; // flush a buffered burst this long after the last key
+const MIN_SCAN_LENGTH = 6; // real barcodes are >=8 digits; 6 keeps fast-typed numbers safe
 const DEDUP_MS = 300; // drop an identical code re-received within this window
 
 /** Strip CR/LF/Tab and surrounding whitespace the scanner may add. */
 export function normalizeScan(raw: string): string {
   return raw.replace(/[\r\n\t]+/g, "").trim();
+}
+
+function debugOn(): boolean {
+  try {
+    return typeof window !== "undefined" && window.localStorage.getItem("scanDebug") === "1";
+  } catch {
+    return false;
+  }
 }
 
 /** A field that should RECEIVE the scan itself (barcode box / variant picker). */
@@ -52,7 +63,7 @@ function setNativeValue(el: HTMLInputElement | HTMLTextAreaElement, value: strin
   el.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
-/** Remove the character(s) that leaked into a focused field before we detected the burst. */
+/** Remove characters that leaked into a focused field before we detected the burst. */
 function stripLeaked(leaked: string) {
   if (!leaked) return;
   const el = document.activeElement;
@@ -75,9 +86,9 @@ export function useHardwareScanner(
     if (!enabled) return;
 
     let buffer = "";
-    let leaked = ""; // chars we let land in a focused field this burst
-    let fast = false; // did the buffer arrive at machine speed?
-    let lastTs = 0;
+    let firstTs = 0; // timestamp of the first char in the buffer
+    let lastTs = 0; // timestamp of the most recent char
+    let leaked = ""; // chars that landed in a focused field this burst
     let timer: ReturnType<typeof setTimeout> | null = null;
     let lastCode = "";
     let lastCodeAt = 0;
@@ -85,31 +96,38 @@ export function useHardwareScanner(
     const reset = () => {
       buffer = "";
       leaked = "";
-      fast = false;
+      firstTs = 0;
+      lastTs = 0;
       if (timer) { clearTimeout(timer); timer = null; }
     };
+
+    // Mean gap between keys; 0 for a single char (treated as fast).
+    const avgGap = () => (buffer.length > 1 ? (lastTs - firstTs) / (buffer.length - 1) : 0);
+    const looksLikeScan = () => buffer.length >= MIN_SCAN_LENGTH && avgGap() <= AVG_GAP_MS;
 
     const flush = () => {
       const raw = buffer;
       const hadLeak = leaked;
-      const wasFast = fast;
+      const mean = avgGap();
       reset();
-      if (!wasFast || raw.length < MIN_SCAN_LENGTH) return;
       const code = normalizeScan(raw);
       if (!code) return;
       const now = performance.now();
-      // Always clean the leaked char out of the focused field, even on dedup.
-      stripLeaked(hadLeak);
-      if (code === lastCode && now - lastCodeAt < DEDUP_MS) return; // ignore double-fire
+      stripLeaked(hadLeak); // clean the field even if we end up deduping
+      if (code === lastCode && now - lastCodeAt < DEDUP_MS) {
+        if (debugOn()) console.info("[scan] dedup ignored", { code });
+        return;
+      }
       lastCode = code;
       lastCodeAt = now;
+      if (debugOn()) console.info("[scan] ✓ scan", { raw, normalized: code, len: code.length, avgGapMs: Math.round(mean) });
       onScanRef.current(code);
     };
 
     const scheduleIdleFlush = () => {
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => {
-        if (fast && buffer.length >= MIN_SCAN_LENGTH) flush();
+        if (looksLikeScan()) flush();
         else reset();
       }, FLUSH_IDLE_MS);
     };
@@ -123,11 +141,14 @@ export function useHardwareScanner(
 
       // Terminators — a wedge scanner usually ends the burst with Enter (or Tab).
       if (e.key === "Enter" || e.key === "Tab") {
-        if (fast && buffer.length >= MIN_SCAN_LENGTH) {
+        if (looksLikeScan()) {
           e.preventDefault();
           e.stopPropagation();
           flush();
         } else {
+          if (debugOn() && buffer.length >= MIN_SCAN_LENGTH) {
+            console.info("[scan] ignored (looks like typing)", { buffer, len: buffer.length, avgGapMs: Math.round(avgGap()) });
+          }
           reset();
         }
         return;
@@ -135,26 +156,32 @@ export function useHardwareScanner(
 
       if (e.key.length !== 1) return; // Shift / arrows / F-keys etc.
 
-      const gap = now - lastTs;
+      const gap = buffer === "" ? Infinity : now - lastTs;
+      if (gap > NEW_SEQUENCE_GAP_MS) {
+        // Long pause → this is the start of a new sequence.
+        buffer = "";
+        leaked = "";
+        firstTs = now;
+      }
+      if (buffer === "") firstTs = now;
       lastTs = now;
 
-      if (buffer === "" || gap > BURST_GAP_MS) {
-        // Start of a sequence, or a human-speed gap: this char may belong to a
-        // person typing, so let it land for now — we only consume confirmed bursts.
-        buffer = e.key;
-        leaked = isTypingField(document.activeElement) ? e.key : "";
-        fast = false;
-      } else {
-        // Machine-speed continuation: this is a scan — keep it out of any field.
-        buffer += e.key;
-        fast = true;
+      const machineSpeed = buffer !== "" && gap <= CONSUME_GAP_MS;
+      buffer += e.key;
+      if (machineSpeed) {
+        // Confident this is a scan in progress → keep it out of any focused field.
         e.preventDefault();
         e.stopPropagation();
+      } else if (isTypingField(document.activeElement)) {
+        // Might be a person typing; let it land for now (cleaned up if it flushes).
+        leaked += e.key;
       }
+      if (debugOn()) console.debug("[scan] key", { key: e.key, gapMs: gap === Infinity ? "∞" : Math.round(gap), buffer });
       scheduleIdleFlush();
     };
 
     document.addEventListener("keydown", onKeyDown, true);
+    if (debugOn()) console.info("[scan] hardware listener attached");
     return () => {
       document.removeEventListener("keydown", onKeyDown, true);
       reset();
