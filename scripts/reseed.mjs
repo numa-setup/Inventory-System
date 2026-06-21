@@ -260,7 +260,8 @@ async function main() {
   // ---- customers (a couple on udhaar) ----
   console.log("Seeding customers…");
   const CUST = [
-    { name: "Walk-in Customer", phone: null, credit_limit: 0, balance: 0 },
+    // No "Walk-in Customer" row: walk-in is the default (null customer) at the
+    // till, so a stored placeholder would just be a confusing duplicate.
     { name: "Ahmed Khan", phone: "0301-2223344", credit_limit: 20000, balance: 7500 },
     { name: "Fatima Bibi", phone: "0345-5566778", credit_limit: 15000, balance: 3200 },
     { name: "Usman Ali", phone: "0312-9988776", credit_limit: 10000, balance: 0 },

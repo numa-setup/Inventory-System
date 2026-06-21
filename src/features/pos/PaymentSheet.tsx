@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import {
   Banknote, CreditCard, Landmark, Wallet, NotebookPen, Smartphone,
-  X, Plus, Trash2, Loader2, UserPlus, Check,
+  X, Plus, Trash2, Loader2, Check,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -46,9 +46,6 @@ export function PaymentSheet({
   const [lines, setLines] = useState<PaymentInput[]>([{ method: "CASH", amount: total }]);
   const [split, setSplit] = useState(false);
   const [tendered, setTendered] = useState(String(total));
-  const [adding, setAdding] = useState(false);
-  const [newName, setNewName] = useState("");
-  const [newPhone, setNewPhone] = useState("");
   const [extra, setExtra] = useState<Customer[]>([]);
 
   useEffect(() => {
@@ -56,7 +53,6 @@ export function PaymentSheet({
       setLines([{ method: "CASH", amount: round2(total) }]);
       setSplit(false);
       setTendered(String(round2(total)));
-      setAdding(false);
     }
   }, [open, total]);
 
@@ -94,21 +90,6 @@ export function PaymentSheet({
     .filter((n, i, a) => n >= cashApplied && a.indexOf(n) === i)
     .slice(0, 4);
 
-  async function addCustomer() {
-    if (!newName.trim()) return;
-    const res = await quickAddCustomer(newName, newPhone);
-    if (res && "error" in res && res.error) return toast(res.error, "error");
-    if (res && "customer" in res && res.customer) {
-      const cust = res.customer;
-      setExtra((x) => [cust, ...x]);
-      setCustomerId(cust.id);
-      setAdding(false);
-      setNewName("");
-      setNewPhone("");
-      toast("Customer added");
-    }
-  }
-
   function confirm() {
     if (Math.abs(remaining) > 0.5) return toast(`Rs ${Math.abs(remaining).toFixed(0)} ${remaining > 0 ? "still unpaid" : "overpaid — reduce a line"}`, "error");
     if (hasUdhaar && !customerId) return toast("Attach a customer for udhaar", "error");
@@ -128,23 +109,26 @@ export function PaymentSheet({
         </div>
 
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 scrollbar-thin">
-          {/* customer */}
+          {/* customer — one search-or-add field, walk-in by default */}
           <div>
             <div className="mb-1 flex items-center justify-between">
               <span className="text-xs font-medium text-text-secondary">Customer {hasUdhaar && <span className="text-coral-text">· required for udhaar</span>}</span>
-              <button onClick={() => setAdding((a) => !a)} className="flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline">
-                <UserPlus className="h-3.5 w-3.5" /> Quick add
-              </button>
             </div>
-            {adding ? (
-              <div className="flex gap-2">
-                <Input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Name" className="h-9" autoFocus />
-                <Input value={newPhone} onChange={(e) => setNewPhone(e.target.value)} placeholder="Phone" className="h-9 w-32" />
-                <Button type="button" onClick={addCustomer} className="h-9 shrink-0"><Check className="h-4 w-4" /></Button>
-              </div>
-            ) : (
-              <CustomerSelect customers={allCustomers} value={customerId} onChange={setCustomerId} />
-            )}
+            <CustomerSelect
+              customers={allCustomers}
+              value={customerId}
+              onChange={setCustomerId}
+              onCreate={async (name, phone) => {
+                const res = await quickAddCustomer(name, phone);
+                if (res && "error" in res && res.error) { toast(res.error, "error"); return null; }
+                if (res && "customer" in res && res.customer) {
+                  setExtra((x) => [res.customer, ...x]);
+                  toast("Customer added");
+                  return res.customer;
+                }
+                return null;
+              }}
+            />
           </div>
 
           {/* method chips */}
