@@ -247,11 +247,20 @@ export function PosClient({
   // Single resolve path for every input: hardware scanner, camera, or typed code.
   function handleScan(raw: string) {
     const parsed = parseScan(raw);
+    // leading-zero / string-vs-number tolerant fallback for numeric barcodes
+    const looseBarcode = (code: string): PosProduct | undefined => {
+      if (!/^\d+$/.test(code)) return undefined;
+      const bare = code.replace(/^0+/, "") || "0";
+      for (const [bc, prod] of byBarcode) if (/^\d+$/.test(bc) && (bc.replace(/^0+/, "") || "0") === bare) return prod;
+      return undefined;
+    };
     const p =
       byBarcode.get(parsed.lookupKey) ||
       byBarcode.get(parsed.barcode) ||
       (barcodeIndex[parsed.lookupKey] ? byId.get(barcodeIndex[parsed.lookupKey]) : undefined) ||
-      (barcodeIndex[parsed.barcode] ? byId.get(barcodeIndex[parsed.barcode]) : undefined);
+      (barcodeIndex[parsed.barcode] ? byId.get(barcodeIndex[parsed.barcode]) : undefined) ||
+      looseBarcode(parsed.lookupKey) ||
+      looseBarcode(parsed.barcode);
 
     if (!p) {
       // not a known barcode — fall back to a unique text-search match

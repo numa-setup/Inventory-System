@@ -160,6 +160,29 @@ export function lookupByBarcode(code: string): CatalogItem | null {
   return snapshot?.byBarcode.get(code) ?? null;
 }
 
+/**
+ * Robust barcode lookup for scans: exact match first, then forgiving fallbacks
+ * (trim, and leading-zero / string-vs-number differences) so a scanned code
+ * still resolves when it was stored with a different zero-padding.
+ */
+export function lookupBarcodeLoose(code: string): CatalogItem | null {
+  if (!snapshot || !code) return null;
+  const exact = snapshot.byBarcode.get(code);
+  if (exact) return exact;
+  const trimmed = code.trim();
+  if (trimmed !== code) {
+    const hit = snapshot.byBarcode.get(trimmed);
+    if (hit) return hit;
+  }
+  if (/^\d+$/.test(trimmed)) {
+    const bare = trimmed.replace(/^0+/, "") || "0";
+    for (const [bc, item] of snapshot.byBarcode) {
+      if (/^\d+$/.test(bc) && (bc.replace(/^0+/, "") || "0") === bare) return item;
+    }
+  }
+  return null;
+}
+
 export function lookupByVariant(variantId: string): CatalogItem | null {
   return snapshot?.byVariant.get(variantId) ?? null;
 }

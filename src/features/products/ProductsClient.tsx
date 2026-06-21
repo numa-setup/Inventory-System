@@ -27,7 +27,7 @@ import { ImportDrawer } from "./ImportDrawer";
 import { ImageGallery } from "./ImageGallery";
 import { useScanHandler } from "@/components/scan/ScanProvider";
 import { parseScan } from "@/lib/barcode";
-import { ensureCatalog, lookupByBarcode } from "@/lib/catalog-cache";
+import { ensureCatalog, lookupBarcodeLoose } from "@/lib/catalog-cache";
 import { beepOk, beepError } from "@/lib/sound";
 
 export type { ProductRow, VariantRow };
@@ -116,17 +116,24 @@ export function ProductsClient({
   useScanHandler(async (raw) => {
     const parsed = parseScan(raw);
     await ensureCatalog();
-    const hit = lookupByBarcode(parsed.lookupKey) || lookupByBarcode(parsed.barcode);
+    const hit = lookupBarcodeLoose(parsed.lookupKey) ?? lookupBarcodeLoose(parsed.barcode);
     if (hit) {
       beepOk();
       const page = await searchProducts({ productId: hit.product_id, limit: 1 });
       const row = page.rows[0];
-      if (row) { setEditProduct(row); setExpanded((s) => new Set(s).add(row.id)); }
-      else toast("That product could not be found.", "error");
+      if (row) {
+        setEditProduct(row);
+        setExpanded((s) => new Set(s).add(row.id));
+        toast(`Editing ${row.name}`);
+      } else {
+        beepError();
+        toast("That product could not be found.", "error");
+      }
     } else {
       beepError();
       setScanBarcode(parsed.barcode);
       setOpen(true);
+      toast(`New barcode ${parsed.barcode} — add this product`);
     }
   });
 
@@ -620,7 +627,7 @@ function VariantEditDrawer({
           </div>
           <div>
             <Label className="flex items-center gap-1.5"><Barcode className="h-3.5 w-3.5" /> Barcode</Label>
-            <Input value={form.barcode} onChange={(e) => setForm((f) => ({ ...f, barcode: e.target.value }))} placeholder="Scan or type" />
+            <Input data-scan-input value={form.barcode} onChange={(e) => setForm((f) => ({ ...f, barcode: e.target.value }))} placeholder="Scan or type" />
           </div>
         </div>
         <div className="grid grid-cols-2 gap-3">
@@ -1031,7 +1038,7 @@ function AddProductDrawer({
                 </div>
                 <div>
                   <Label className="flex items-center gap-1.5"><Barcode className="h-3.5 w-3.5" /> Barcode</Label>
-                  <Input value={single.barcode} onChange={(e) => setSingle((s) => ({ ...s, barcode: e.target.value }))} placeholder="Scan or type" />
+                  <Input data-scan-input value={single.barcode} onChange={(e) => setSingle((s) => ({ ...s, barcode: e.target.value }))} placeholder="Scan or type" />
                 </div>
               </div>
               <Help>SKU is a unique internal code. Barcode is the printed number you scan at the till (leave blank to generate one later).</Help>
@@ -1103,7 +1110,7 @@ function AddProductDrawer({
                       <tr key={i} className="border-b border-border/60 last:border-0">
                         <td className="whitespace-nowrap px-2 py-1.5 font-medium text-text-primary">{m.combo.join(" / ")}</td>
                         <td className="px-2 py-1.5"><Input value={m.sku} onChange={(e) => setMatrixField(i, "sku", e.target.value)} className="h-7 w-24 text-xs" /></td>
-                        <td className="px-2 py-1.5"><Input value={m.barcode} onChange={(e) => setMatrixField(i, "barcode", e.target.value)} className="h-7 w-28 text-xs" /></td>
+                        <td className="px-2 py-1.5"><Input data-scan-input value={m.barcode} onChange={(e) => setMatrixField(i, "barcode", e.target.value)} className="h-7 w-28 text-xs" /></td>
                         <td className="px-2 py-1.5"><Input type="number" value={m.sale_price} onChange={(e) => setMatrixField(i, "sale_price", e.target.value)} className="h-7 w-16 text-xs" /></td>
                         <td className="px-2 py-1.5"><Input type="number" value={m.cost} onChange={(e) => setMatrixField(i, "cost", e.target.value)} className="h-7 w-16 text-xs" /></td>
                         <td className="px-2 py-1.5">

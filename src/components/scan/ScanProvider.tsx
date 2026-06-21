@@ -1,9 +1,10 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { ScanLine } from "lucide-react";
 import { useHardwareScanner } from "@/lib/useHardwareScanner";
 import { parseScan } from "@/lib/barcode";
-import { ensureCatalog, lookupByBarcode, type CatalogItem } from "@/lib/catalog-cache";
+import { ensureCatalog, lookupBarcodeLoose, type CatalogItem } from "@/lib/catalog-cache";
 import { beepOk, beepError } from "@/lib/sound";
 import { ScanActionSheet } from "./ScanActionSheet";
 import { CameraScanner } from "./CameraScannerLazy";
@@ -30,13 +31,14 @@ export function ScanProvider({ children }: { children: React.ReactNode }) {
   const [item, setItem] = useState<CatalogItem | null>(null);
   const [unknown, setUnknown] = useState<string | null>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
+  const [pulse, setPulse] = useState(0); // bumps on every scan so the indicator flashes
 
   // Warm the catalogue cache so global scans resolve instantly.
   useEffect(() => { void ensureCatalog(); }, []);
 
   const resolveGlobal = useCallback((code: string) => {
     const parsed = parseScan(code);
-    const hit = lookupByBarcode(parsed.lookupKey) || lookupByBarcode(parsed.barcode);
+    const hit = lookupBarcodeLoose(parsed.lookupKey) ?? lookupBarcodeLoose(parsed.barcode);
     if (hit) {
       beepOk();
       setUnknown(null);
@@ -49,6 +51,7 @@ export function ScanProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const onScan = useCallback((code: string) => {
+    setPulse((p) => p + 1); // visible confirmation that a scan was received
     if (handlerRef.current) handlerRef.current(code);
     else resolveGlobal(code);
   }, [resolveGlobal]);
@@ -61,6 +64,7 @@ export function ScanProvider({ children }: { children: React.ReactNode }) {
   return (
     <Ctx.Provider value={{ register, openCamera }}>
       {children}
+      <ScannerIndicator pulse={pulse} />
       <ScanActionSheet item={item} unknown={unknown} onClose={() => { setItem(null); setUnknown(null); }} />
       <CameraScanner
         open={cameraOpen}
@@ -69,6 +73,31 @@ export function ScanProvider({ children }: { children: React.ReactNode }) {
         title="Scan anywhere"
       />
     </Ctx.Provider>
+  );
+}
+
+/** Always-visible "listening" pill that flashes each time a scan is received. */
+function ScannerIndicator({ pulse }: { pulse: number }) {
+  const [flash, setFlash] = useState(false);
+  useEffect(() => {
+    if (!pulse) return;
+    setFlash(true);
+    const t = setTimeout(() => setFlash(false), 450);
+    return () => clearTimeout(t);
+  }, [pulse]);
+  return (
+    <div
+      className={
+        "pointer-events-none fixed bottom-3 left-3 z-[60] flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium shadow-card transition-colors " +
+        (flash
+          ? "border-green-icon/40 bg-green-tile text-green-text"
+          : "border-border bg-surface/90 text-text-tertiary backdrop-blur")
+      }
+      aria-live="polite"
+    >
+      <ScanLine className={"h-3.5 w-3.5 " + (flash ? "animate-pulse" : "")} />
+      {flash ? "Scanned" : "Scanner ready"}
+    </div>
   );
 }
 

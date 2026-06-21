@@ -24,7 +24,7 @@ import {
 } from "./actions";
 import { useScanHandler } from "@/components/scan/ScanProvider";
 import { parseScan } from "@/lib/barcode";
-import { ensureCatalog, lookupByBarcode } from "@/lib/catalog-cache";
+import { ensureCatalog, lookupBarcodeLoose } from "@/lib/catalog-cache";
 import { beepOk, beepError } from "@/lib/sound";
 
 export interface PhysLocation { code: string; name: string }
@@ -91,13 +91,14 @@ export function StockClient({
   useScanHandler(async (raw) => {
     const parsed = parseScan(raw);
     const match = rows.find((r) => r.barcode && (r.barcode === parsed.lookupKey || r.barcode === parsed.barcode));
-    if (match) { beepOk(); setAction({ type: "in", row: match }); return; }
+    if (match) { beepOk(); setAction({ type: "in", row: match }); toast(`Stock In · ${match.product_name}`); return; }
     // Catalogue fallback covers variants not in the current stock list.
     await ensureCatalog();
-    const hit = lookupByBarcode(parsed.lookupKey) || lookupByBarcode(parsed.barcode);
+    const hit = lookupBarcodeLoose(parsed.lookupKey) ?? lookupBarcodeLoose(parsed.barcode);
     const row = hit ? rows.find((r) => r.variant_id === hit.variant_id) : undefined;
-    if (row) { beepOk(); setAction({ type: "in", row }); return; }
+    if (row) { beepOk(); setAction({ type: "in", row }); toast(`Stock In · ${row.product_name}`); return; }
     beepError();
+    toast(`Not found — add ${parsed.barcode}`, "error");
     router.push(`/admin/products?add=${encodeURIComponent(parsed.barcode)}`);
   });
 
@@ -309,7 +310,7 @@ function VariantPicker({
     <div>
       <div className="relative">
         <Barcode className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-tertiary" />
-        <Input autoFocus value={term} onChange={(e) => setTerm(e.target.value)} placeholder="Scan barcode or search…" className="pl-9" />
+        <Input data-scan-input autoFocus value={term} onChange={(e) => setTerm(e.target.value)} placeholder="Scan barcode or search…" className="pl-9" />
       </div>
       <div className="mt-2 max-h-56 overflow-y-auto rounded-lg border border-border">
         {results.length === 0 ? (

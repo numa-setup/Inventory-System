@@ -18,7 +18,7 @@ import { useToast } from "@/components/ui/Toast";
 import { VariantSearch, type VariantSearchItem } from "@/components/ui/VariantSearch";
 import { CameraScanner } from "@/components/scan/CameraScannerLazy";
 import { useCatalog } from "@/lib/useCatalog";
-import { ensureCatalog, lookupByBarcode, type CatalogItem } from "@/lib/catalog-cache";
+import { ensureCatalog, lookupBarcodeLoose, type CatalogItem } from "@/lib/catalog-cache";
 import { useScanHandler } from "@/components/scan/ScanProvider";
 import { parseScan } from "@/lib/barcode";
 import { beepOk, beepError } from "@/lib/sound";
@@ -114,7 +114,7 @@ export function RecordPurchaseClient({
 
   function handleScan(raw: string) {
     const parsed = parseScan(raw);
-    const item = lookupByBarcode(parsed.lookupKey) || lookupByBarcode(parsed.barcode);
+    const item = lookupBarcodeLoose(parsed.lookupKey) ?? lookupBarcodeLoose(parsed.barcode);
     const v = item
       ? variantMap.get(item.variant_id) ?? toVS(item)
       : variants.find((x) => x.barcode === parsed.lookupKey || x.barcode === parsed.barcode);
@@ -448,7 +448,7 @@ function NewItemDrawer({
               <option value="dozen">Dozen</option>
             </Select>
           </div>
-          <div><Label>Barcode (optional)</Label><Input value={barcode} onChange={(e) => setBarcode(e.target.value)} placeholder="Scan or type" /></div>
+          <div><Label>Barcode (optional)</Label><Input data-scan-input value={barcode} onChange={(e) => setBarcode(e.target.value)} placeholder="Scan or type" /></div>
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div><Label>Cost price (₨)</Label><Input type="number" value={cost} onChange={(e) => setCost(e.target.value)} placeholder="What you pay" /></div>
