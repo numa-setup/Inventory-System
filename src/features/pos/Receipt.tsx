@@ -1,15 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { CheckCircle2, Printer, MessageCircle, Plus, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { useToast } from "@/components/ui/Toast";
-import { receiptInnerHtml, receiptCss, type ReceiptData } from "@/lib/receipt";
-import { openReceiptPdf } from "@/lib/receipt-pdf";
+import { type ReceiptData } from "@/lib/receipt";
+import { buildReceiptPdf, openReceiptPdf } from "@/lib/receipt-pdf";
 import { normalizeWaNumber } from "@/lib/notifications/whatsapp";
 import { sendReceiptWhatsApp } from "./receipt-actions";
 
-/** Post-sale receipt: thermal print / PDF, WhatsApp PDF send, and start a new sale. */
+/**
+ * Post-sale receipt. The preview shows the EXACT same PDF that Print/PDF and the
+ * WhatsApp send produce (one invoice template — lib/receipt-pdf.ts), so every
+ * surface is pixel-identical. There is no separate HTML receipt design anymore.
+ */
 export function Receipt({
   data,
   customerPhone,
@@ -22,9 +26,28 @@ export function Receipt({
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   const [printing, setPrinting] = useState(false);
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
 
-  // Print / Download uses the SAME PDF builder as the WhatsApp send, so both
-  // produce an identical document (same layout, content and font).
+  // Build the invoice PDF once per sale and preview it directly (same bytes as
+  // Print/Download). Revoke the blob URL when the modal closes / data changes.
+  useEffect(() => {
+    if (!data) { setPdfUrl(null); return; }
+    let url: string | null = null;
+    let cancelled = false;
+    (async () => {
+      try {
+        const bytes = await buildReceiptPdf(data);
+        if (cancelled) return;
+        const blob = new Blob([bytes.slice() as unknown as BlobPart], { type: "application/pdf" });
+        url = URL.createObjectURL(blob);
+        setPdfUrl(url);
+      } catch {
+        if (!cancelled) setPdfUrl(null);
+      }
+    })();
+    return () => { cancelled = true; if (url) URL.revokeObjectURL(url); };
+  }, [data]);
+
   async function printPdf() {
     if (!data) return;
     setPrinting(true);
@@ -66,9 +89,18 @@ export function Receipt({
           <span className="ml-auto tnum text-sm text-text-tertiary">{data.receipt_no}</span>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto bg-surface-2 p-4 scrollbar-thin">
-          <style>{receiptCss}</style>
-          <div className="mx-auto w-fit rounded-lg bg-white p-3 shadow-card" dangerouslySetInnerHTML={{ __html: receiptInnerHtml(data) }} />
+        <div className="min-h-0 flex-1 overflow-hidden bg-surface-2 p-4">
+          {pdfUrl ? (
+            <iframe
+              src={`${pdfUrl}#toolbar=0&navpanes=0&view=FitH`}
+              title={`Invoice ${data.receipt_no}`}
+              className="h-[55vh] w-full rounded-lg border border-border bg-white shadow-card"
+            />
+          ) : (
+            <div className="flex h-[55vh] w-full items-center justify-center rounded-lg border border-border bg-white text-text-tertiary">
+              <Loader2 className="h-5 w-5 animate-spin" />
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-2 gap-2 border-t border-border p-4">
