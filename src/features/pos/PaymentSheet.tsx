@@ -27,13 +27,14 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
 type Customer = { id: string; name: string; phone: string | null };
 
 export function PaymentSheet({
-  open, total, customers, customerId, setCustomerId, onClose, onConfirm, processing,
+  open, total, customers, customerId, customerName, setCustomer, onClose, onConfirm, processing,
 }: {
   open: boolean;
   total: number;
   customers: Customer[];
   customerId: string;
-  setCustomerId: (id: string) => void;
+  customerName: string;
+  setCustomer: (name: string, id: string) => void;
   onClose: () => void;
   onConfirm: (payments: PaymentInput[], change: number) => void;
   processing: boolean;
@@ -112,8 +113,9 @@ export function PaymentSheet({
             </div>
             <CustomerSelect
               customers={allCustomers}
-              value={customerId}
-              onChange={setCustomerId}
+              name={customerName}
+              customerId={customerId}
+              onPick={setCustomer}
               onCreate={async (name, phone) => {
                 const res = await quickAddCustomer(name, phone);
                 if (res && "error" in res && res.error) { toast(res.error, "error"); return null; }

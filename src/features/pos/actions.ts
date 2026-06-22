@@ -58,6 +58,7 @@ export interface CheckoutResult {
 export async function checkoutSale(input: {
   lines: CartLine[];
   customer_id?: string | null;
+  customer_name?: string | null;
   payments: PaymentInput[];
   discount?: number;
   coupon_code?: string | null;
@@ -160,7 +161,8 @@ export async function checkoutSale(input: {
   const { data: sale, error: sErr } = await db
     .from("sales")
     .insert({
-      receipt_no: receiptNo, customer_id: input.customer_id || null, location_id: main,
+      receipt_no: receiptNo, customer_id: input.customer_id || null,
+      customer_name: input.customer_name?.trim() || null, location_id: main,
       subtotal, discount, tax, total, cogs_total: cogsTotal, profit, cashier_id: user.id,
     })
     .select("id, receipt_no").single();

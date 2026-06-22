@@ -1,76 +1,238 @@
-import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import type { ReceiptData } from "./receipt";
+import { amountToWords } from "./number-to-words";
 
 const PKR = (n: number) => "Rs " + Math.round(n).toLocaleString("en-PK");
+const NUM = (n: number) => Math.round(n).toLocaleString("en-PK");
 // pdf-lib StandardFonts are Latin-1 only — drop anything outside that range.
 const safe = (s: string) => (s ?? "").replace(/[^\x20-\xFF]/g, "");
 
-interface Row { l?: string; r?: string; c?: string; b?: boolean; s?: number; div?: boolean }
+// Thermal (80mm ≈ 226pt) receipt width — the size the system already uses.
+const W = 226;
+const M = 10; // page margin
+const INK = rgb(0, 0, 0);
+const GRID = rgb(0, 0, 0);
+
+// Bordered items table columns (left edge x, width). Sum of widths == usable.
+const USABLE = W - M * 2; // 206pt
+const COL = {
+  sr: 16,
+  name: USABLE - 16 - 30 - 28 - 32, // flexible name column = 100pt
+  qty: 30,
+  rate: 28,
+  total: 32,
+};
+
+/** Greedy word-wrap (with hard char-split for over-long words). */
+function wrap(font: PDFFont, size: number, text: string, maxW: number): string[] {
+  const words = safe(text).split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let cur = "";
+  const fits = (s: string) => font.widthOfTextAtSize(s, size) <= maxW;
+  for (const w of words) {
+    const trial = cur ? `${cur} ${w}` : w;
+    if (fits(trial)) { cur = trial; continue; }
+    if (cur) { lines.push(cur); cur = ""; }
+    if (!fits(w)) {
+      let chunk = "";
+      for (const ch of w) {
+        if (fits(chunk + ch)) chunk += ch;
+        else { if (chunk) lines.push(chunk); chunk = ch; }
+      }
+      cur = chunk;
+    } else cur = w;
+  }
+  if (cur) lines.push(cur);
+  return lines.length ? lines : [""];
+}
+
+interface Ctx {
+  page: PDFPage;
+  reg: PDFFont;
+  bold: PDFFont;
+  y: number;
+}
+
+function text(ctx: Ctx, s: string, x: number, size: number, bold = false) {
+  ctx.page.drawText(safe(s), { x, y: ctx.y - size, size, font: bold ? ctx.bold : ctx.reg, color: INK });
+}
+function center(ctx: Ctx, s: string, size: number, bold = false) {
+  const font = bold ? ctx.bold : ctx.reg;
+  const w = font.widthOfTextAtSize(safe(s), size);
+  text(ctx, s, (W - w) / 2, size, bold);
+}
+function right(ctx: Ctx, s: string, rightEdge: number, size: number, bold = false) {
+  const font = bold ? ctx.bold : ctx.reg;
+  const w = font.widthOfTextAtSize(safe(s), size);
+  text(ctx, s, rightEdge - w, size, bold);
+}
+function hline(ctx: Ctx, y: number, x1 = M, x2 = W - M, thickness = 0.6) {
+  ctx.page.drawLine({ start: { x: x1, y }, end: { x: x2, y }, thickness, color: GRID });
+}
+function vline(ctx: Ctx, x: number, y1: number, y2: number, thickness = 0.6) {
+  ctx.page.drawLine({ start: { x, y: y1 }, end: { x, y: y2 }, thickness, color: GRID });
+}
 
 /**
- * Build an 80mm thermal-style receipt PDF with the same content as the printed /
- * downloaded receipt. Returns the PDF bytes.
+ * Build the SALES INVOICE PDF used for BOTH Print/Download and WhatsApp — one
+ * identical document. Sized for the 80mm thermal width the system uses, in the
+ * system invoice font (monospace). Matches the reference layout:
+ *   shop header · SALES INVOICE + date/time · Customer/Address ·
+ *   Invoice No + Page X of Y · bordered Sr/Item/Qty/Rate/Total table ·
+ *   TOTAL + amount in words · footer.
  */
 export async function buildReceiptPdf(d: ReceiptData): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
-  const reg = await doc.embedFont(StandardFonts.Helvetica);
-  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
-  const W = 226, M = 12, LH = 12, DIV = 8;
+  const reg = await doc.embedFont(StandardFonts.Courier);
+  const bold = await doc.embedFont(StandardFonts.CourierBold);
 
-  const rows: Row[] = [];
-  rows.push({ c: d.store.name, b: true, s: 12 });
-  if (d.store.address) rows.push({ c: d.store.address, s: 7 });
-  if (d.store.phone) rows.push({ c: d.store.phone, s: 7 });
-  if (d.store.ntn) rows.push({ c: `NTN: ${d.store.ntn}`, s: 7 });
-  if (d.store.header) rows.push({ c: d.store.header, s: 7 });
-  rows.push({ div: true });
-  rows.push({ l: `Receipt: ${d.receipt_no}`, s: 8 });
-  rows.push({ l: d.date, s: 8 });
-  rows.push({ l: `Cashier: ${d.cashier}`, s: 8 });
-  if (d.customer) rows.push({ l: `Customer: ${d.customer}`, s: 8 });
-  rows.push({ div: true });
-  for (const it of d.items) {
-    rows.push({ l: it.name + (it.label ? ` (${it.label})` : ""), s: 8 });
-    rows.push({ l: `  ${it.qty} x ${PKR(it.unit_price)}`, r: PKR(it.line_total), s: 8 });
-    if (it.discount && it.discount > 0) rows.push({ l: "  discount", r: "-" + PKR(it.discount), s: 7 });
-  }
-  rows.push({ div: true });
-  rows.push({ l: "Subtotal", r: PKR(d.subtotal), s: 8 });
-  if (d.discount > 0) rows.push({ l: "Discount", r: "-" + PKR(d.discount), s: 8 });
-  if (d.tax > 0) rows.push({ l: `Tax (${d.tax_percent}%)`, r: PKR(d.tax), s: 8 });
-  rows.push({ l: "TOTAL", r: PKR(d.total), b: true, s: 11 });
-  rows.push({ div: true });
-  for (const p of d.payments) rows.push({ l: p.method, r: PKR(p.amount), s: 8 });
-  if (d.change > 0) rows.push({ l: "Change", r: PKR(d.change), s: 8 });
-  rows.push({ div: true });
-  rows.push({ c: d.store.footer || "Thank you!", s: 8 });
+  // Column x positions
+  const xSr = M;
+  const xName = xSr + COL.sr;
+  const xQty = xName + COL.name;
+  const xRate = xQty + COL.qty;
+  const xTotal = xRate + COL.rate;
+  const xEnd = xTotal + COL.total; // == W - M
 
-  const height = M * 2 + rows.reduce((h, r) => h + (r.div ? DIV : LH), 0);
-  const page = doc.addPage([W, height]);
-  let y = height - M;
+  const BODY = 7; // table body / detail font
+  const ROWLH = 8.5; // wrapped line height inside a row
+  const PAD = 3; // vertical cell padding
 
+  // ---- Pre-measure the rows so the page height is exact ----
+  const rows = d.items.map((it, i) => {
+    const name = it.name + (it.label ? ` (${it.label})` : "");
+    const nameLines = wrap(reg, BODY, name, COL.name - 6);
+    return {
+      sr: String(i + 1),
+      nameLines,
+      qty: `${it.qty} ${(it.unit || "Pcs").trim()}`.trim(),
+      rate: NUM(it.unit_price),
+      total: NUM(it.line_total),
+      h: PAD * 2 + Math.max(1, nameLines.length) * ROWLH,
+    };
+  });
+
+  const wordsLines = wrap(reg, 7, amountToWords(d.total), USABLE - 4);
+
+  // Section heights (top → bottom)
+  let h = M; // top margin
+  h += 14; // shop name
+  if (d.store.address) h += 9;
+  if (d.store.phone) h += 9;
+  h += 8; // gap
+  h += 16; // SALES INVOICE
+  h += 11; // date/time
+  h += 8; // gap
+  h += 11; // Customer
+  h += 11; // Address
+  h += 11; // Invoice No / Page
+  h += 6; // gap
+  const headerRowH = PAD * 2 + ROWLH; // table header
+  h += headerRowH;
+  h += rows.reduce((a, r) => a + r.h, 0); // item rows
+  h += 4; // gap after table
+  if (d.discount > 0) h += 10;
+  if (d.tax > 0) h += 10;
+  h += 14; // TOTAL
+  h += wordsLines.length * 9 + 4; // amount in words
+  if (d.payments.length) h += 10; // payment method
+  h += 6; // gap
+  if (d.store.footer) h += 9 * wrap(reg, 7, d.store.footer, USABLE).length;
+  h += M; // bottom margin
+
+  const page = doc.addPage([W, h]);
+  const ctx: Ctx = { page, reg, bold, y: h - M };
+
+  // ---- Shop header ----
+  center(ctx, d.store.name, 11, true); ctx.y -= 14;
+  if (d.store.address) { center(ctx, d.store.address, 7); ctx.y -= 9; }
+  if (d.store.phone) { center(ctx, d.store.phone, 7); ctx.y -= 9; }
+  ctx.y -= 8;
+
+  // ---- Title + date/time ----
+  center(ctx, "SALES INVOICE", 12, true); ctx.y -= 16;
+  center(ctx, d.date, 7); ctx.y -= 11;
+  ctx.y -= 8;
+
+  // ---- Customer / Address ----
+  text(ctx, `Customer: ${d.customer || "Walk-in customer"}`, M, 8); ctx.y -= 11;
+  text(ctx, `Address: ${d.customer_address || "-"}`, M, 8); ctx.y -= 11;
+
+  // ---- Invoice No / Page X of Y ----
+  text(ctx, `Invoice No: ${d.receipt_no}`, M, 8);
+  right(ctx, "Page 1 of 1", W - M, 8); ctx.y -= 11;
+  ctx.y -= 6;
+
+  // ---- Bordered items table ----
+  const tableTop = ctx.y;
+  // header row
+  const headerBottom = ctx.y - headerRowH;
+  text({ ...ctx, y: ctx.y - PAD }, "Sr", xSr + 2, BODY, true);
+  text({ ...ctx, y: ctx.y - PAD }, "Item Name", xName + 3, BODY, true);
+  text({ ...ctx, y: ctx.y - PAD }, "Qty", xQty + 3, BODY, true);
+  right({ ...ctx, y: ctx.y - PAD }, "Rate", xRate + COL.rate - 2, BODY, true);
+  right({ ...ctx, y: ctx.y - PAD }, "Total", xTotal + COL.total - 2, BODY, true);
+  ctx.y = headerBottom;
+
+  // item rows
   for (const r of rows) {
-    if (r.div) {
-      page.drawLine({ start: { x: M, y: y - 2 }, end: { x: W - M, y: y - 2 }, thickness: 0.5, color: rgb(0.6, 0.6, 0.6) });
-      y -= DIV;
-      continue;
-    }
-    const size = r.s ?? 8;
-    const font = r.b ? bold : reg;
-    if (r.c) {
-      const t = safe(r.c);
-      const w = font.widthOfTextAtSize(t, size);
-      page.drawText(t, { x: (W - w) / 2, y: y - size, size, font });
-    } else {
-      if (r.l) page.drawText(safe(r.l), { x: M, y: y - size, size, font });
-      if (r.r) {
-        const t = safe(r.r);
-        const w = font.widthOfTextAtSize(t, size);
-        page.drawText(t, { x: W - M - w, y: y - size, size, font });
-      }
-    }
-    y -= LH;
+    const rowTop = ctx.y;
+    const baseY = ctx.y - PAD;
+    text({ ...ctx, y: baseY }, r.sr, xSr + 2, BODY);
+    r.nameLines.forEach((ln, k) => text({ ...ctx, y: baseY - k * ROWLH }, ln, xName + 3, BODY));
+    text({ ...ctx, y: baseY }, r.qty, xQty + 3, BODY);
+    right({ ...ctx, y: baseY }, r.rate, xRate + COL.rate - 2, BODY);
+    right({ ...ctx, y: baseY }, r.total, xTotal + COL.total - 2, BODY);
+    ctx.y = rowTop - r.h;
+    hline(ctx, ctx.y); // row separator
+  }
+  const tableBottom = ctx.y;
+
+  // table grid: outer box + header underline + verticals
+  hline(ctx, tableTop, M, W - M); // top
+  hline(ctx, headerBottom, M, W - M); // under header
+  hline(ctx, tableBottom, M, W - M); // bottom (redundant w/ last sep, harmless)
+  for (const x of [xSr, xName, xQty, xRate, xTotal, xEnd]) vline(ctx, x, tableTop, tableBottom);
+
+  ctx.y = tableBottom - 4;
+
+  // ---- Totals ----
+  if (d.discount > 0) { ctx.y -= 10; right(ctx, `Discount: -${PKR(d.discount)}`, W - M, 8); }
+  if (d.tax > 0) { ctx.y -= 10; right(ctx, `Tax (${d.tax_percent}%): ${PKR(d.tax)}`, W - M, 8); }
+  ctx.y -= 14;
+  text(ctx, "TOTAL:", M, 11, true);
+  right(ctx, PKR(d.total), W - M, 11, true);
+  ctx.y -= 4;
+
+  // ---- Amount in words ----
+  for (const ln of wordsLines) { ctx.y -= 9; text(ctx, ln, M, 7); }
+
+  // ---- Payment method ----
+  if (d.payments.length) {
+    ctx.y -= 10;
+    const methods = d.payments.map((p) => p.method).join(", ");
+    text(ctx, `Payment: ${methods}`, M, 7);
+  }
+
+  // ---- Footer ----
+  if (d.store.footer) {
+    ctx.y -= 6;
+    for (const ln of wrap(reg, 7, d.store.footer, USABLE)) { ctx.y -= 9; center(ctx, ln, 7); }
   }
 
   return doc.save();
+}
+
+/**
+ * Build the invoice PDF and open it in a new tab (triggering the print dialog
+ * when allowed). Browser-only. Used by both the post-sale Print/Download button
+ * and the F6 reprint so they show the exact same document as the WhatsApp send.
+ */
+export async function openReceiptPdf(d: ReceiptData): Promise<void> {
+  const bytes = await buildReceiptPdf(d);
+  const blob = new Blob([bytes.slice() as unknown as BlobPart], { type: "application/pdf" });
+  const url = URL.createObjectURL(blob);
+  const w = window.open(url, "_blank");
+  if (w) w.addEventListener("load", () => { try { w.print(); } catch { /* ignore */ } });
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }

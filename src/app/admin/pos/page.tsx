@@ -13,10 +13,10 @@ export default async function PosPage() {
   const [{ data: catalog }, { data: customers }, { data: categories }, { data: settings }, { data: promoRows }, user] = await Promise.all([
     supabase
       .from("catalog_index")
-      .select("variant_id, product_id, product_name, has_variants, sku, label, barcode, price, avg_cost, cost, disc_type, disc_value, reorder_point, category_id, available, image_url")
+      .select("variant_id, product_id, product_name, has_variants, sku, label, barcode, price, avg_cost, cost, disc_type, disc_value, reorder_point, category_id, available, image_url, unit")
       .eq("active", true)
       .order("product_name"),
-    supabase.from("customers").select("id, name, phone").order("name"),
+    supabase.from("customers").select("id, name, phone, address").order("name"),
     supabase.from("categories").select("id, name, parent_id"),
     supabase.from("settings").select("store_name, tax_percent, store_info").eq("id", 1).maybeSingle(),
     supabase.from("discounts").select(PROMO_SELECT).eq("active", true),
@@ -56,6 +56,7 @@ export default async function PosPage() {
     available: Number(v.available),
     category_id: v.category_id,
     image_url: (v.image_url as string) ?? null,
+    unit: (v.unit as string) ?? null,
   }));
 
   // top-level categories present in the catalogue, for the filter chips

@@ -8,10 +8,10 @@ import type { PaymentInput } from "@/features/pos/actions";
 export interface QueuedSalePayload {
   lines: { variant_id: string; product_id: string; qty: number; unit_price: number; discount?: number }[];
   customer_id: string | null;
+  /** Customer name captured at the till (free walk-in name or a linked customer). */
+  customer_name?: string | null;
   payments: PaymentInput[];
   discount: number;
-  /** Entered coupon code, so promotions re-apply identically on replay. */
-  coupon_code?: string | null;
 }
 
 export interface QueuedSale {

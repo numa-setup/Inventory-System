@@ -4,7 +4,8 @@ import { useState } from "react";
 import { CheckCircle2, Printer, MessageCircle, Plus, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { useToast } from "@/components/ui/Toast";
-import { receiptInnerHtml, receiptCss, printReceipt, type ReceiptData } from "@/lib/receipt";
+import { receiptInnerHtml, receiptCss, type ReceiptData } from "@/lib/receipt";
+import { openReceiptPdf } from "@/lib/receipt-pdf";
 import { normalizeWaNumber } from "@/lib/notifications/whatsapp";
 import { sendReceiptWhatsApp } from "./receipt-actions";
 
@@ -20,6 +21,21 @@ export function Receipt({
 }) {
   const toast = useToast();
   const [busy, setBusy] = useState(false);
+  const [printing, setPrinting] = useState(false);
+
+  // Print / Download uses the SAME PDF builder as the WhatsApp send, so both
+  // produce an identical document (same layout, content and font).
+  async function printPdf() {
+    if (!data) return;
+    setPrinting(true);
+    try {
+      await openReceiptPdf(data);
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Could not build the invoice PDF", "error");
+    } finally {
+      setPrinting(false);
+    }
+  }
 
   async function whatsapp() {
     if (!data) return;
@@ -56,8 +72,8 @@ export function Receipt({
         </div>
 
         <div className="grid grid-cols-2 gap-2 border-t border-border p-4">
-          <Button variant="secondary" onClick={() => printReceipt(data)}>
-            <Printer className="h-4 w-4" /> Print / PDF
+          <Button variant="secondary" onClick={printPdf} disabled={printing}>
+            {printing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />} Print / PDF
           </Button>
           <Button variant="secondary" onClick={whatsapp} disabled={busy}>
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageCircle className="h-4 w-4" />} WhatsApp PDF

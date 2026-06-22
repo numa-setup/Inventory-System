@@ -22,11 +22,12 @@ import { CameraScanner } from "@/components/scan/CameraScannerLazy";
 import { PaymentSheet } from "./PaymentSheet";
 import { Receipt } from "./Receipt";
 import { ReturnsSheet } from "./ReturnsSheet";
-import { checkoutSale, type PaymentInput } from "./actions";
+import { checkoutSale, quickAddCustomer, type PaymentInput } from "./actions";
 import { enqueueSale, getQueue, removeFromQueue, queueCount, type QueuedSalePayload } from "@/lib/pos-queue";
 import { computeTotals, unitDiscount, round2 as round2px } from "@/lib/pricing";
 import { computePromotions, type Promotion, type PromoResult } from "@/lib/discounts";
-import { printReceipt, type ReceiptData } from "@/lib/receipt";
+import { type ReceiptData } from "@/lib/receipt";
+import { openReceiptPdf } from "@/lib/receipt-pdf";
 
 /** Cart line: qty + a per-line discount (rupees). `manual` is set once the
  *  cashier edits/removes it, so it stops tracking the product's default. */
@@ -55,6 +56,7 @@ interface HeldSale {
   id: string;
   ts: number;
   customerId: string;
+  customerName?: string;
   discount: string;
   lines: { p: PosProduct; qty: number; discount: number; manual: boolean }[];
 }
@@ -84,6 +86,8 @@ export interface PosProduct {
   category_id: string | null;
   /** Effective image (variant photo, else product photo). */
   image_url: string | null;
+  /** Base unit (e.g. Pcs / Kg) — shown on the invoice Qty column. */
+  unit: string | null;
 }
 
 function tone(p: PosProduct) { return p.available <= 0 ? "out_of_stock" : p.available <= (p.reorder_point || 5) ? "low_stock" : "in_stock"; }
@@ -104,6 +108,7 @@ function toPos(it: CatalogItem): PosProduct {
     available: it.available,
     category_id: it.category_id,
     image_url: it.image_url ?? null,
+    unit: it.unit ?? null,
   };
 }
 
@@ -114,7 +119,7 @@ export function PosClient({
   products: PosProduct[];
   categories: { id: string; name: string }[];
   barcodeIndex: Record<string, string>;
-  customers: { id: string; name: string; phone: string | null }[];
+  customers: { id: string; name: string; phone: string | null; address?: string | null }[];
   store: StoreSettings;
   cashierName: string;
   promotions?: Promotion[];
@@ -140,8 +145,23 @@ export function PosClient({
   const [cat, setCat] = useState("");
   const [cart, setCart] = useState<Map<string, CartEntry>>(new Map());
   const [customerId, setCustomerId] = useState("");
+  const [customerName, setCustomerName] = useState("");
+  const setCustomer = (name: string, id: string) => { setCustomerName(name); setCustomerId(id); };
+  // Customers created inline at the till this session (so they show up linked
+  // immediately without a server refresh).
+  const [extraCustomers, setExtraCustomers] = useState<{ id: string; name: string; phone: string | null; address?: string | null }[]>([]);
+  const allCustomers = useMemo(() => [...extraCustomers, ...customers], [extraCustomers, customers]);
+  async function createCustomer(name: string, phone: string | null) {
+    const res = await quickAddCustomer(name, phone);
+    if (res && "error" in res && res.error) { toast(res.error, "error"); return null; }
+    if (res && "customer" in res && res.customer) {
+      setExtraCustomers((x) => [res.customer, ...x]);
+      toast("Customer added");
+      return res.customer;
+    }
+    return null;
+  }
   const [discount, setDiscount] = useState("");
-  const [coupon, setCoupon] = useState("");
   const [processing, setProcessing] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [paymentOpen, setPaymentOpen] = useState(false);
@@ -306,9 +326,10 @@ export function PosClient({
   useScanHandler((code) => handleScan(code));
 
   const lines = [...cart.values()];
-  // Promotions (time-bound sales / category offers / coupons) layered on top of
-  // each line's everyday default discount. Computed with the same engine the
-  // server re-runs at checkout, so the previewed total matches what's charged.
+  // Promotions (time-bound sales / category offers) layered on top of each
+  // line's everyday default discount. Computed with the same engine the server
+  // re-runs at checkout, so the previewed total matches what's charged. (Coupon
+  // codes were removed from the cart in Part 3 — only automatic promos apply.)
   const promo: PromoResult = computePromotions(
     lines.map((l) => ({
       key: l.p.variant_id,
@@ -318,7 +339,7 @@ export function PosClient({
       unit_price: l.p.price,
     })),
     promotions,
-    { couponCode: coupon },
+    {},
   );
   const manualBill = Number(discount) || 0;
   const { subtotal, discount: disc, tax, total } = computeTotals(
@@ -341,14 +362,16 @@ export function PosClient({
   async function checkout(payments: PaymentInput[], change: number) {
     if (!lines.length) return;
     const cartLines = lines; // snapshot for the receipt before we clear
-    const cust = customers.find((c) => c.id === customerId) ?? null;
+    const cust = allCustomers.find((c) => c.id === customerId) ?? null;
+    // The free-typed name (or the linked customer's name) saved on the sale.
+    const saleCustomerName = (customerName.trim() || cust?.name || "Walk-in customer");
     const payload: QueuedSalePayload = {
       lines: cartLines.map((l) => ({
         variant_id: l.p.variant_id, product_id: l.p.product_id, qty: l.qty, unit_price: l.p.price,
         discount: l.discount,
       })),
-      customer_id: customerId || null, payments, discount: Number(discount) || 0,
-      coupon_code: coupon || null,
+      customer_id: customerId || null, customer_name: saleCustomerName,
+      payments, discount: Number(discount) || 0,
     };
     const makeReceipt = (receiptNo: string, sub: number, dis: number, tx: number, tot: number): ReceiptData => ({
       store: {
@@ -358,8 +381,9 @@ export function PosClient({
       receipt_no: receiptNo,
       date: new Date().toLocaleString("en-PK", { dateStyle: "medium", timeStyle: "short" }),
       cashier: cashierName,
-      customer: cust?.name ?? null,
-      items: cartLines.map((l) => ({ name: l.p.name, label: l.p.label || undefined, qty: l.qty, unit_price: l.p.price, discount: l.discount, line_total: round2(l.p.price * l.qty) })),
+      customer: saleCustomerName,
+      customer_address: cust?.address ?? null,
+      items: cartLines.map((l) => ({ name: l.p.name, label: l.p.label || undefined, qty: l.qty, unit: l.p.unit, unit_price: l.p.price, discount: l.discount, line_total: round2(l.p.price * l.qty) })),
       subtotal: sub, discount: dis, tax: tx, tax_percent: store.tax_percent, total: tot,
       payments, change,
     });
@@ -387,7 +411,7 @@ export function PosClient({
     setReceiptData(receipt);
     setLastReceipt(receipt); // kept for F6 after the modal closes
     setPaymentOpen(false);
-    setCart(new Map()); setDiscount(""); setCoupon("");
+    setCart(new Map()); setDiscount("");
   }
 
   async function refreshQueue() { setQueued(await queueCount()); }
@@ -429,7 +453,7 @@ export function PosClient({
 
   function finishReceipt() {
     setReceiptData(null);
-    setCustomerId("");
+    setCustomer("", "");
     searchRef.current?.focus();
   }
 
@@ -440,12 +464,13 @@ export function PosClient({
       id: crypto.randomUUID?.() ?? `${Date.now()}`,
       ts: Date.now(),
       customerId,
+      customerName,
       discount,
       lines: lines.map((l) => ({ p: l.p, qty: l.qty, discount: l.discount, manual: l.manual })),
     };
     const next = [entry, ...held];
     setHeld(next); saveHeld(next);
-    setCart(new Map()); setDiscount(""); setCoupon(""); setCustomerId("");
+    setCart(new Map()); setDiscount(""); setCustomer("", "");
     toast("Sale held");
     searchRef.current?.focus();
   }
@@ -457,14 +482,14 @@ export function PosClient({
     if (cart.size) {
       next = [{
         id: crypto.randomUUID?.() ?? `${Date.now()}`,
-        ts: Date.now(), customerId, discount,
+        ts: Date.now(), customerId, customerName, discount,
         lines: lines.map((l) => ({ p: l.p, qty: l.qty, discount: l.discount, manual: l.manual })),
         }, ...next];
     }
     setHeld(next); saveHeld(next);
     setCart(new Map(entry.lines.map((l) => [l.p.variant_id, { p: l.p, qty: l.qty, discount: l.discount, manual: l.manual }])));
     setDiscount(entry.discount);
-    setCustomerId(entry.customerId);
+    setCustomer(entry.customerName ?? "", entry.customerId);
     setHeldOpen(false);
     searchRef.current?.focus();
   }
@@ -483,11 +508,11 @@ export function PosClient({
       switch (e.key) {
         case "F2": e.preventDefault(); searchRef.current?.focus(); return;
         case "F4": e.preventDefault(); if (!anyModal && cart.size) openPayment(); return;
-        case "F6": e.preventDefault(); if (lastReceipt) printReceipt(lastReceipt); return;
+        case "F6": e.preventDefault(); if (lastReceipt) void openReceiptPdf(lastReceipt); return;
         case "Escape":
           if (shortcutsOpen) return setShortcutsOpen(false);
           if (heldOpen) return setHeldOpen(false);
-          if (!anyModal && cart.size) { setCart(new Map()); setDiscount(""); setCoupon(""); flash(false, "Sale cleared"); }
+          if (!anyModal && cart.size) { setCart(new Map()); setDiscount(""); flash(false, "Sale cleared"); }
           return;
       }
       if (anyModal) return;
@@ -635,8 +660,8 @@ export function PosClient({
       <div className="hidden lg:block">
         <CartPanel
           lines={lines} subtotal={subtotal} discount={discount} setDiscount={setDiscount} total={total} tax={tax} taxPercent={store.tax_percent}
-          belowCost={belowCost} promo={promo} coupon={coupon} setCoupon={setCoupon}
-          customers={customers} customerId={customerId} setCustomerId={setCustomerId}
+          belowCost={belowCost} promo={promo}
+          customers={allCustomers} customerId={customerId} customerName={customerName} setCustomer={setCustomer} onCreateCustomer={createCustomer}
           setQty={setQty} remove={(id) => setQty(id, 0)} setLineDiscount={setLineDiscount} clearLineDiscount={clearLineDiscount}
           processing={processing} onCharge={openPayment} onHold={holdSale}
         />
@@ -662,8 +687,8 @@ export function PosClient({
             </div>
             <CartPanel
               lines={lines} subtotal={subtotal} discount={discount} setDiscount={setDiscount} total={total} tax={tax} taxPercent={store.tax_percent}
-              belowCost={belowCost} promo={promo} coupon={coupon} setCoupon={setCoupon}
-              customers={customers} customerId={customerId} setCustomerId={setCustomerId}
+              belowCost={belowCost} promo={promo}
+              customers={allCustomers} customerId={customerId} customerName={customerName} setCustomer={setCustomer} onCreateCustomer={createCustomer}
               setQty={setQty} remove={(id) => setQty(id, 0)} setLineDiscount={setLineDiscount} clearLineDiscount={clearLineDiscount}
               processing={processing} onCharge={openPayment} onHold={holdSale} embedded
             />
@@ -682,9 +707,10 @@ export function PosClient({
       <PaymentSheet
         open={paymentOpen}
         total={total}
-        customers={customers}
+        customers={allCustomers}
         customerId={customerId}
-        setCustomerId={setCustomerId}
+        customerName={customerName}
+        setCustomer={setCustomer}
         onClose={() => setPaymentOpen(false)}
         onConfirm={checkout}
         processing={processing}
@@ -692,7 +718,7 @@ export function PosClient({
 
       <Receipt
         data={receiptData}
-        customerPhone={customers.find((c) => c.id === customerId)?.phone}
+        customerPhone={allCustomers.find((c) => c.id === customerId)?.phone}
         onClose={finishReceipt}
       />
 
@@ -712,7 +738,7 @@ export function PosClient({
               ) : held.map((h) => {
                 const count = h.lines.reduce((s, l) => s + l.qty, 0);
                 const amt = h.lines.reduce((s, l) => s + l.p.price * l.qty - (l.discount ?? 0), 0);
-                const cust = customers.find((c) => c.id === h.customerId);
+                const cust = allCustomers.find((c) => c.id === h.customerId);
                 return (
                   <div key={h.id} className="flex items-center gap-2 rounded-xl border border-border p-3 mb-2">
                     <div className="min-w-0 flex-1">
@@ -772,22 +798,22 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
 }
 
 function CartPanel({
-  lines, subtotal, discount, setDiscount, total, tax, taxPercent, belowCost, promo, coupon, setCoupon,
-  customers, customerId, setCustomerId, setQty, remove, setLineDiscount, clearLineDiscount, processing, onCharge, onHold, embedded,
+  lines, subtotal, discount, setDiscount, total, tax, taxPercent, belowCost, promo,
+  customers, customerId, customerName, setCustomer, onCreateCustomer,
+  setQty, remove, setLineDiscount, clearLineDiscount, processing, onCharge, onHold, embedded,
 }: {
   lines: CartEntry[];
   subtotal: number; discount: string; setDiscount: (v: string) => void; total: number;
   tax: number; taxPercent: number;
   belowCost: boolean;
-  promo: PromoResult; coupon: string; setCoupon: (v: string) => void;
+  promo: PromoResult;
   customers: { id: string; name: string; phone: string | null }[];
-  customerId: string; setCustomerId: (v: string) => void;
+  customerId: string; customerName: string; setCustomer: (name: string, id: string) => void;
+  onCreateCustomer: (name: string, phone: string | null) => Promise<{ id: string; name: string; phone: string | null } | null>;
   setQty: (id: string, qty: number) => void; remove: (id: string) => void;
   setLineDiscount: (id: string, value: number) => void; clearLineDiscount: (id: string) => void;
   processing: boolean; onCharge: () => void; onHold: () => void; embedded?: boolean;
 }) {
-  const couponEntered = coupon.trim().length > 0;
-  const couponApplied = promo.applied.some((a) => a.amount > 0 || a.type === "FREE_DELIVERY");
   return (
     <div className={cn("flex flex-col rounded-2xl border border-border bg-surface", embedded ? "max-h-[72vh]" : "h-full")}>
       <div className="flex items-center justify-between border-b border-border px-4 py-3">
@@ -853,31 +879,18 @@ function CartPanel({
       </div>
 
       <div className="space-y-3 border-t border-border p-4">
-        <CustomerSelect customers={customers} value={customerId} onChange={setCustomerId} />
+        <CustomerSelect customers={customers} name={customerName} customerId={customerId} onPick={setCustomer} onCreate={onCreateCustomer} />
         <div className="flex items-center justify-between text-sm">
           <span className="text-text-secondary">Subtotal</span><span className="tnum text-text-primary">{formatPKR(subtotal)}</span>
         </div>
 
-        {/* Applied promotions (auto sales / category offers / coupon) */}
+        {/* Applied promotions (automatic sales / category offers) */}
         {promo.applied.filter((a) => a.amount > 0 || a.type === "FREE_DELIVERY").map((a) => (
           <div key={a.discount_id} className="flex items-center justify-between text-sm text-green-text">
             <span className="flex items-center gap-1.5"><Tag className="h-3.5 w-3.5" /> {a.name}</span>
             <span className="tnum">{a.type === "FREE_DELIVERY" ? "Free delivery" : `− ${formatPKR(a.amount)}`}</span>
           </div>
         ))}
-
-        {/* Coupon code */}
-        <div>
-          <div className="flex items-center gap-2">
-            <Input value={coupon} onChange={(e) => setCoupon(e.target.value)} placeholder="Coupon code" className="h-8 flex-1 uppercase" />
-            {couponEntered && <button type="button" onClick={() => setCoupon("")} className="text-xs text-text-tertiary hover:text-coral-text">Clear</button>}
-          </div>
-          {couponEntered && (
-            couponApplied
-              ? <p className="mt-1 text-[11px] font-medium text-green-text">Coupon applied.</p>
-              : <p className="mt-1 text-[11px] text-text-tertiary">No active offer matches this code (check the amount / dates).</p>
-          )}
-        </div>
 
         <div className="flex items-center justify-between gap-3 text-sm">
           <span className="text-text-secondary">Bill discount</span>

@@ -25,8 +25,10 @@ export const checkoutSchema = z.object({
     discount: money.optional(),
   })).min(1, "Cart is empty."),
   customer_id: optId,
+  customer_name: z.string().max(120).nullable().optional(),
   payments: z.array(z.object({ method: payMethod, amount: z.number().finite() })).min(1, "Add a payment."),
   discount: money.optional(),
+  coupon_code: z.string().nullable().optional(),
   idempotency_key: z.string().min(1),
 });
 

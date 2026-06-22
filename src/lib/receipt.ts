@@ -4,6 +4,8 @@ export interface ReceiptItem {
   name: string;
   label?: string;
   qty: number;
+  /** Product unit shown next to the qty (e.g. Pcs / Kg). */
+  unit?: string | null;
   unit_price: number;
   /** Per-line discount in rupees (off the gross line). */
   discount?: number;
@@ -26,6 +28,8 @@ export interface ReceiptData {
   date: string; // already formatted
   cashier: string;
   customer?: string | null;
+  /** Customer address line shown under the name on the invoice. */
+  customer_address?: string | null;
   items: ReceiptItem[];
   subtotal: number;
   discount: number;

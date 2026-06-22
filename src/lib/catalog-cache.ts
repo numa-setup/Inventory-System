@@ -25,6 +25,8 @@ export interface CatalogItem {
   reorder_point: number;
   category_id: string | null;
   image_url: string | null;
+  /** Product base unit (e.g. Pcs / Kg) — shown in the invoice Qty column. */
+  unit: string | null;
   available: number;
   avg_cost: number;
   active: boolean;
