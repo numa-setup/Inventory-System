@@ -21,21 +21,20 @@ export interface DashboardData {
 }
 
 export async function buildDashboard(supabase: Supabase, range: DateRange): Promise<DashboardData> {
-  const variants = await getVariantOptions(supabase);
-  const vMap = new Map(variants.map((v) => [v.variant_id, v]));
-  const catName = new Map<string, string>();
-  {
-    const { data } = await supabase.from("categories").select("id, name");
-    for (const c of data ?? []) catName.set(c.id, c.name);
-  }
-
-  const [{ data: sales }, { data: orders }, { data: avail }, { data: customers }, { data: suppliers }] = await Promise.all([
+  // These reads are all independent — run getVariantOptions, categories and the
+  // five range queries in a SINGLE parallel batch (was 3 sequential round-trips).
+  const [variants, { data: catRows }, { data: sales }, { data: orders }, { data: avail }, { data: customers }, { data: suppliers }] = await Promise.all([
+    getVariantOptions(supabase),
+    supabase.from("categories").select("id, name"),
     supabase.from("sales").select("id, total, profit, created_at").gte("created_at", iso(range.from)).lte("created_at", iso(range.to)),
     supabase.from("orders").select("id, order_no, customer_name, total, status, payment_type, created_at").order("created_at", { ascending: false }).limit(200),
     supabase.from("variant_availability").select("variant_id, on_hand, available"),
     supabase.from("customers").select("id, name, credit_balance"),
     supabase.from("suppliers").select("id, name, balance"),
   ]);
+  const vMap = new Map(variants.map((v) => [v.variant_id, v]));
+  const catName = new Map<string, string>();
+  for (const c of catRows ?? []) catName.set(c.id, c.name);
 
   const saleIds = (sales ?? []).map((s) => s.id);
   const [{ data: items }, { data: pays }] = await Promise.all([

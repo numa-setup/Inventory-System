@@ -20,33 +20,36 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
   const supabase = await createClient();
 
   // Opportunistically free stock from abandoned orders so the board is accurate
-  // even between the scheduled (pg_cron) runs.
-  await supabase.rpc("release_expired_reservations");
-
-  const { data: orders } = await supabase
-    .from("orders")
-    .select("id, order_no, customer_name, customer_phone, address, status, payment_type, subtotal, delivery_fee, total, created_at")
-    .gte("created_at", range.from.toISOString())
-    .lte("created_at", range.to.toISOString())
-    .order("created_at", { ascending: false })
-    .limit(300);
+  // even between the scheduled (pg_cron) runs — run it in parallel with the
+  // orders read instead of blocking on it first (it doesn't gate the list).
+  const [, { data: orders }] = await Promise.all([
+    supabase.rpc("release_expired_reservations"),
+    supabase
+      .from("orders")
+      .select("id, order_no, customer_name, customer_phone, address, status, payment_type, subtotal, delivery_fee, total, created_at")
+      .gte("created_at", range.from.toISOString())
+      .lte("created_at", range.to.toISOString())
+      .order("created_at", { ascending: false })
+      .limit(300),
+  ]);
 
   const all = orders ?? [];
 
-  // line items + product names for the loaded orders (bounded to this page of orders)
+  // line items for the loaded orders, with the product name embedded via the
+  // FK join so there's no second round-trip (was an N+1: items → products).
   const orderIds = all.map((o) => o.id);
   const { data: items } = orderIds.length
-    ? await supabase.from("order_items").select("order_id, product_id, qty, unit_price, line_total").in("order_id", orderIds)
-    : { data: [] as { order_id: string; product_id: string; qty: number; unit_price: number; line_total: number }[] };
-  const productIds = [...new Set((items ?? []).map((i) => i.product_id))];
-  const { data: prods } = productIds.length
-    ? await supabase.from("products").select("id, name").in("id", productIds)
-    : { data: [] as { id: string; name: string }[] };
-  const nameMap = new Map((prods ?? []).map((p) => [p.id, p.name]));
+    ? await supabase
+        .from("order_items")
+        .select("order_id, qty, unit_price, line_total, products(name)")
+        .in("order_id", orderIds)
+    : { data: [] as { order_id: string; qty: number; unit_price: number; line_total: number; products: { name: string } | null }[] };
   const itemsByOrder = new Map<string, OrderFull["items"]>();
   for (const it of items ?? []) {
     const arr = itemsByOrder.get(it.order_id) ?? [];
-    arr.push({ title: nameMap.get(it.product_id) ?? "Item", qty: Number(it.qty), unit_price: Number(it.unit_price), line_total: Number(it.line_total) });
+    const prod = it.products as { name: string } | { name: string }[] | null;
+    const title = Array.isArray(prod) ? prod[0]?.name : prod?.name;
+    arr.push({ title: title ?? "Item", qty: Number(it.qty), unit_price: Number(it.unit_price), line_total: Number(it.line_total) });
     itemsByOrder.set(it.order_id, arr);
   }
 
