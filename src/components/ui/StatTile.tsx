@@ -97,6 +97,8 @@ export function StatTile({
 
   return (
     <Card className={cn("overflow-hidden p-5", className)}>
+      {/* Top row: pastel icon tile on the left, eye toggle (sensitive) or delta
+          badge on the right — they never sit on the same line as the value. */}
       <div className="flex items-start justify-between gap-2">
         <div
           className={cn(
@@ -106,51 +108,46 @@ export function StatTile({
         >
           <Icon className="h-5 w-5" strokeWidth={2.2} />
         </div>
-        {delta !== undefined && (
-          <span
-            className={cn(
-              "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium",
-              positive ? "bg-green-tile text-green-text" : "bg-coral-tile text-coral-text",
-            )}
-          >
-            {positive ? (
-              <TrendingUp className="h-3 w-3" />
-            ) : (
-              <TrendingDown className="h-3 w-3" />
-            )}
-            {Math.abs(delta)}%
-          </span>
-        )}
-      </div>
-      <div className="mt-4 min-w-0">
         {sensitive ? (
           <button
             type="button"
             onClick={() => setRevealed((v) => !v)}
-            title={masked ? "Click to reveal" : String(shown)}
+            title={masked ? "Click to reveal" : "Click to hide"}
             aria-label={masked ? `Reveal ${label}` : `Hide ${label}`}
-            className="group -ml-1 flex w-full max-w-full items-center gap-2 rounded-lg px-1 py-0.5 transition hover:bg-surface-2"
+            aria-pressed={revealed}
+            className="-mr-1 -mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-text-tertiary transition hover:bg-surface-2 hover:text-text-secondary"
           >
-            <span className="min-w-0 flex-1 text-left">
-              {masked ? (
-                <span className="tnum block select-none whitespace-nowrap font-heading text-xl font-bold tracking-wider text-text-tertiary sm:text-2xl">
-                  Rs ••••
-                </span>
-              ) : (
-                <FitText className="tnum font-heading font-bold text-text-primary">{shown}</FitText>
-              )}
-            </span>
-            {masked ? (
-              <Eye className="h-4 w-4 shrink-0 text-text-tertiary opacity-70 group-hover:opacity-100" />
-            ) : (
-              <EyeOff className="h-4 w-4 shrink-0 text-text-tertiary opacity-70 group-hover:opacity-100" />
-            )}
+            {masked ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
           </button>
         ) : (
-          <div className="min-w-0" title={String(shown)}>
-            <FitText className="tnum font-heading font-bold text-text-primary">{shown}</FitText>
-          </div>
+          delta !== undefined && (
+            <span
+              className={cn(
+                "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium",
+                positive ? "bg-green-tile text-green-text" : "bg-coral-tile text-coral-text",
+              )}
+            >
+              {positive ? (
+                <TrendingUp className="h-3 w-3" />
+              ) : (
+                <TrendingDown className="h-3 w-3" />
+              )}
+              {Math.abs(delta)}%
+            </span>
+          )
         )}
+      </div>
+      {/* Value area: its own line, full width, nothing overlapping it. */}
+      <div className="mt-4 min-w-0">
+        <div className="min-w-0" title={masked ? undefined : String(shown)}>
+          {masked ? (
+            <span className="tnum block select-none whitespace-nowrap font-heading text-xl font-bold tracking-wider text-text-tertiary sm:text-2xl">
+              Rs ••••
+            </span>
+          ) : (
+            <FitText className="tnum font-heading font-bold text-text-primary">{shown}</FitText>
+          )}
+        </div>
         <div className="mt-1 truncate text-sm text-text-secondary">{label}</div>
         {hint && <div className="mt-0.5 truncate text-xs text-text-tertiary">{hint}</div>}
       </div>
