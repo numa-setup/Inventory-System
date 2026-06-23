@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ImagePlus, Loader2, Trash2, Star, Package } from "lucide-react";
+import { ImagePlus, Loader2, Trash2, Star, Package, Link2 } from "lucide-react";
 import { useToast } from "@hamza/shared/ui/Toast";
 import { Button } from "@hamza/shared/ui/Button";
-import { getProductImages, uploadProductImage, removeProductImageUrl, setPrimaryProductImage } from "./actions";
+import { Input } from "@hamza/shared/ui/Input";
+import { getProductImages, uploadProductImage, addProductImageUrl, removeProductImageUrl, setPrimaryProductImage } from "./actions";
 
 const ALLOWED = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
 const MAX_BYTES = 5_242_880; // 5 MB
@@ -14,6 +15,7 @@ export function ImageGallery({ productId, onChanged }: { productId: string; onCh
   const [images, setImages] = useState<string[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [urlValue, setUrlValue] = useState("");
   const ref = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -58,6 +60,20 @@ export function ImageGallery({ productId, onChanged }: { productId: string; onCh
     }
     if (added > 0) { toast(added > 1 ? `${added} photos added` : "Photo added"); onChanged?.(); }
   }
+  async function addUrl() {
+    const url = urlValue.trim();
+    if (!url) return;
+    setBusy(true);
+    const res = await addProductImageUrl(productId, url);
+    setBusy(false);
+    if (res && "error" in res && res.error) return toast(res.error, "error");
+    if (res && "images" in res && res.images) {
+      setImages(res.images);
+      setUrlValue("");
+      toast("Photo added");
+      onChanged?.();
+    }
+  }
   async function remove(url: string) {
     setBusy(true);
     const res = await removeProductImageUrl(productId, url);
@@ -84,6 +100,21 @@ export function ImageGallery({ productId, onChanged }: { productId: string; onCh
         <Button type="button" variant="secondary" size="sm" disabled={busy} onClick={() => ref.current?.click()}>
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />} Add photos
         </Button>
+      </div>
+
+      {/* Or paste an image URL — saves & displays the same as an uploaded file. */}
+      <div className="mb-2.5 flex items-center gap-2">
+        <div className="relative flex-1">
+          <Link2 className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-tertiary" />
+          <Input
+            value={urlValue}
+            onChange={(e) => setUrlValue(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addUrl(); } }}
+            placeholder="…or paste an image URL (https://…)"
+            className="h-9 pl-8 text-xs"
+          />
+        </div>
+        <Button type="button" variant="secondary" size="sm" disabled={busy || !urlValue.trim()} onClick={addUrl}>Add URL</Button>
       </div>
 
       {!loaded ? (

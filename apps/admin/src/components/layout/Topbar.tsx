@@ -1,8 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import { Menu, Moon, ScanLine, Sun, LogOut } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useTheme } from "@hamza/shared/theme/ThemeProvider";
+import { ConfirmDialog } from "@hamza/shared/ui/ConfirmDialog";
 import { useScan } from "@/components/scan/ScanProvider";
 import { GlobalSearch } from "./GlobalSearch";
 import { NotificationsBell } from "./NotificationsBell";
@@ -23,8 +25,11 @@ export function Topbar({
   const { theme, toggle } = useTheme();
   const { openCamera } = useScan();
   const router = useRouter();
+  const [confirmOut, setConfirmOut] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
 
   async function onSignOut() {
+    setSigningOut(true);
     await signOutAdmin();
     router.push("/login");
     router.refresh();
@@ -83,9 +88,9 @@ export function Topbar({
           </div>
         </div>
 
-        {/* Sign out */}
+        {/* Sign out (asks for confirmation first) */}
         <button
-          onClick={onSignOut}
+          onClick={() => setConfirmOut(true)}
           className="rounded-lg p-2 text-text-secondary hover:bg-surface-2 hover:text-coral-text"
           aria-label="Sign out"
           title="Sign out"
@@ -93,6 +98,19 @@ export function Topbar({
           <LogOut className="h-5 w-5" />
         </button>
       </div>
+
+      <ConfirmDialog
+        open={confirmOut}
+        onCancel={() => setConfirmOut(false)}
+        onConfirm={onSignOut}
+        tone="danger"
+        icon={<LogOut className="h-5 w-5" />}
+        title="Log out?"
+        message="You’ll need to sign in again with your email, password and the emailed code to get back into the admin portal."
+        confirmLabel="Log out"
+        cancelLabel="Cancel"
+        loading={signingOut}
+      />
     </header>
   );
 }

@@ -1,13 +1,13 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Loader2, Upload, FileUp, CheckCircle2, AlertTriangle, ArrowLeft } from "lucide-react";
+import { Loader2, Upload, FileUp, CheckCircle2, AlertTriangle, ArrowLeft, Download } from "lucide-react";
 import { Drawer } from "@hamza/shared/ui/Drawer";
 import { Button } from "@hamza/shared/ui/Button";
 import { useToast } from "@hamza/shared/ui/Toast";
 import { cn } from "@hamza/shared/utils";
 import { validateProductImport, importProducts, type ValidatedRow } from "./actions";
-import { parseProductCsv } from "@/lib/csv";
+import { parseProductCsv, buildProductCsvTemplate } from "@/lib/csv";
 
 const rowsFromCsv = parseProductCsv;
 
@@ -52,6 +52,16 @@ export function ImportDrawer({ open, onClose, onDone }: { open: boolean; onClose
     reader.readAsText(f);
   }
 
+  function downloadTemplate() {
+    const blob = new Blob([buildProductCsvTemplate()], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "products-import-template.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   const okCount = preview?.filter((r) => r.status === "ok").length ?? 0;
   const errCount = preview?.filter((r) => r.status === "error").length ?? 0;
 
@@ -82,14 +92,18 @@ export function ImportDrawer({ open, onClose, onDone }: { open: boolean; onClose
       {!preview ? (
         <div className="space-y-3">
           <p className="text-sm text-text-secondary">
-            Columns: <code className="rounded bg-surface-2 px-1">name, sku, barcode, price, cost, qty</code> (first row = header; barcode/qty optional).
+            Full columns: <code className="rounded bg-surface-2 px-1">name, brand, category, sub_category, sku, barcode, unit, cost, price, discount_type, discount_value, opening_stock, low_stock, status, description, image_url</code> (first row = header). Only <strong>name</strong> and <strong>sku</strong> are required; everything else is optional.
           </p>
+          <p className="text-xs text-text-tertiary">Download the template, fill it in, then import. <code className="rounded bg-surface-2 px-1">image_url</code> sets the product photo (separate multiple URLs with <code className="rounded bg-surface-2 px-1">|</code>).</p>
           <input ref={fileRef} type="file" accept=".csv,text/csv" onChange={onFile} className="hidden" />
-          <Button type="button" variant="secondary" size="sm" onClick={() => fileRef.current?.click()}><FileUp className="h-4 w-4" /> Choose CSV file</Button>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="secondary" size="sm" onClick={downloadTemplate}><Download className="h-4 w-4" /> Download CSV template</Button>
+            <Button type="button" variant="secondary" size="sm" onClick={() => fileRef.current?.click()}><FileUp className="h-4 w-4" /> Choose CSV file</Button>
+          </div>
           <textarea
             value={text}
             onChange={(e) => setText(e.target.value)}
-            placeholder={"name,sku,barcode,price,cost,qty\nSugar 1kg,GRO-SUG-1,,180,150,40"}
+            placeholder={"name,brand,category,sub_category,sku,barcode,unit,cost,price,discount_type,discount_value,opening_stock,low_stock,status,description,image_url\nMaybelline SuperStay Lipstick,Maybelline,Beauty,Lipstick,MBL-SS-RUBY,8901234567890,pcs,450,699,PERCENT,10,24,5,active,Long-lasting matte,https://picsum.photos/seed/lipstick/600"}
             className="h-56 w-full rounded-xl border border-border bg-surface p-3 font-mono text-xs text-text-primary focus-visible:border-brand-500 focus-visible:outline-none"
           />
         </div>

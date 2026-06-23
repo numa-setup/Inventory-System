@@ -10,10 +10,14 @@ export function Sidebar({
   role,
   mobileOpen,
   onClose,
+  storeName = "Hamza Store",
+  logoUrl,
 }: {
   role: Role;
   mobileOpen: boolean;
   onClose: () => void;
+  storeName?: string;
+  logoUrl?: string;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -45,12 +49,19 @@ export function Sidebar({
         {/* Brand */}
         <div className="flex h-16 items-center justify-between px-5">
           <Link href="/admin/dashboard" className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-500 text-white">
-              <Store className="h-5 w-5" />
-            </div>
+            {logoUrl ? (
+              <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl bg-surface-2">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={logoUrl} alt={storeName} className="h-full w-full object-contain" />
+              </div>
+            ) : (
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-500 text-white">
+                <Store className="h-5 w-5" />
+              </div>
+            )}
             <div className="leading-tight">
               <div className="font-heading text-sm font-bold text-text-primary">
-                Hamza Store
+                {storeName}
               </div>
               <div className="text-[10px] text-text-tertiary">Inventory & POS</div>
             </div>

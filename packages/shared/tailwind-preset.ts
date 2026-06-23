@@ -80,11 +80,16 @@ const preset: Partial<Config> = {
           from: { transform: "translateY(8px)", opacity: "0" },
           to: { transform: "translateY(0)", opacity: "1" },
         },
+        pop: {
+          from: { transform: "scale(.96)", opacity: "0" },
+          to: { transform: "scale(1)", opacity: "1" },
+        },
       },
       animation: {
         "fade-in": "fade-in .2s ease-out",
         "slide-in-right": "slide-in-right .25s cubic-bezier(.16,1,.3,1)",
         "slide-up": "slide-up .2s ease-out",
+        pop: "pop .18s cubic-bezier(.16,1,.3,1)",
       },
     },
   },

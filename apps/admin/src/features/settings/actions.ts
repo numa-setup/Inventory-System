@@ -38,6 +38,31 @@ export async function updateStoreProfile(input: {
   return { ok: true };
 }
 
+/* ---------------- Store logo upload ---------------- */
+// Reuses the same working Storage mechanism as product photos: one file →
+// public bucket → public URL. The URL is returned so the StoreSection form can
+// persist it on Save (settings.store_info.logo_url), exactly like a pasted URL.
+const LOGO_BUCKET = "product-images";
+const LOGO_TYPES = ["image/png", "image/jpeg", "image/jpg", "image/webp", "image/avif"];
+const LOGO_MAX_BYTES = 5_242_880; // 5 MB
+
+export async function uploadLogo(formData: FormData): Promise<{ url: string } | { error: string }> {
+  if (!(await requireOwner())) return { error: "Only the owner can change settings." };
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) return { error: "No image selected." };
+  if (!LOGO_TYPES.includes(file.type)) return { error: "Use a PNG, JPG or WebP image." };
+  if (file.size > LOGO_MAX_BYTES) return { error: "Logo must be under 5 MB." };
+
+  const db = createAdminClient();
+  const ext = (file.name.split(".").pop() || "png").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const path = `branding/logo-${Date.now()}-${Math.random().toString(36).slice(2, 7)}.${ext}`;
+  const { error } = await db.storage.from(LOGO_BUCKET).upload(path, file, {
+    upsert: true, contentType: file.type, cacheControl: "31536000",
+  });
+  if (error) return { error: error.message || "Upload failed — please try again." };
+  return { url: db.storage.from(LOGO_BUCKET).getPublicUrl(path).data.publicUrl };
+}
+
 /* ---------------- Inventory settings ---------------- */
 export async function updateInventorySettings(input: {
   costing_method: "WEIGHTED_AVERAGE" | "FIFO";

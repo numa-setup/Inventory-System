@@ -15,39 +15,34 @@ export default async function AdminLayout({
 
   if (!user) redirect("/login");
 
+  // The profile, unread badge and store branding only need the user id, so fetch
+  // all three in ONE parallel round-trip instead of a serial waterfall — this
+  // layout re-runs on every admin navigation, so collapsing it keeps tab
+  // switching fast. Each query degrades gracefully on its own (pre-seed fallback).
+  const [profileRes, unreadRes, settingsRes] = await Promise.all([
+    supabase.from("profiles").select("full_name, role").eq("id", user.id).single()
+      .then((r) => r, () => ({ data: null })),
+    supabase.from("notifications").select("id", { count: "exact", head: true })
+      .eq("recipient_type", "ADMIN").is("read_at", null)
+      .then((r) => r, () => ({ count: 0 })),
+    supabase.from("settings").select("store_name, store_info").eq("id", 1).maybeSingle()
+      .then((r) => r, () => ({ data: null })),
+  ]);
+
   // Profile may not exist yet (before schema/seed). Fall back gracefully.
-  let role: Role = "owner";
-  let fullName = user.email?.split("@")[0] ?? "User";
+  const profile = (profileRes.data as { full_name?: string; role?: Role } | null) ?? null;
+  const role: Role = profile?.role ?? "owner";
+  const fullName = profile?.full_name ?? user.email?.split("@")[0] ?? "User";
 
-  try {
-    const { data } = await supabase
-      .from("profiles")
-      .select("full_name, role")
-      .eq("id", user.id)
-      .single();
-    const profile = data as { full_name?: string; role?: Role } | null;
-    if (profile) {
-      role = profile.role ?? role;
-      fullName = profile.full_name ?? fullName;
-    }
-  } catch {
-    // profiles table not migrated yet — use fallbacks
-  }
+  const unread = ("count" in unreadRes ? unreadRes.count : 0) ?? 0;
 
-  let unread = 0;
-  try {
-    const { count } = await supabase
-      .from("notifications")
-      .select("id", { count: "exact", head: true })
-      .eq("recipient_type", "ADMIN")
-      .is("read_at", null);
-    unread = count ?? 0;
-  } catch {
-    // notifications not readable yet — leave at 0
-  }
+  const settings = (settingsRes.data as { store_name?: string; store_info?: Record<string, string | undefined> } | null) ?? null;
+  const info = settings?.store_info ?? {};
+  const storeName = settings?.store_name || "Hamza Store";
+  const logoUrl = info.logo_url || "";
 
   return (
-    <AppShell role={role} userName={fullName} unreadCount={unread}>
+    <AppShell role={role} userName={fullName} unreadCount={unread} storeName={storeName} logoUrl={logoUrl}>
       {children}
     </AppShell>
   );

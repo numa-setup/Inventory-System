@@ -7,6 +7,7 @@ import { getCurrentUser } from "@hamza/shared/auth";
 import { fetchProductsPage, type ProductsQuery, type ProductsPage } from "@/lib/products-query";
 import { generateInternalEan13, generateWeightTemplateEan13 } from "@/lib/barcode";
 import { productInputSchema, variantPatchSchema, importRowsSchema, firstIssue } from "@hamza/shared/validation";
+import type { ParsedProductRow } from "@/lib/csv";
 
 /**
  * Server-side paginated + filtered product search. Powers the Products list's
@@ -223,17 +224,19 @@ export async function updateVariant(
   return { ok: true };
 }
 
-// ---- Bulk CSV import (products + opening stock) --------------------------
-export interface ImportRow {
+// ---- Bulk CSV import (full products + opening stock) ---------------------
+// The CSV carries EVERY Add-Product field (name, brand, category/sub-category,
+// sku, barcode, unit, cost, price, default discount, opening stock, low-stock,
+// status, description, image URL). Each row creates one complete product (a
+// single default variant) through the same create_product_full RPC the manual
+// "Add product" form uses, then sets the image + status — so a filled template
+// imports a complete product, image included.
+export interface ValidatedRow {
+  line: number;
   name: string;
   sku: string;
-  barcode?: string;
   price: number;
-  cost: number;
   qty: number;
-}
-export interface ValidatedRow extends ImportRow {
-  line: number;
   status: "ok" | "error";
   errors: string[];
 }
@@ -241,7 +244,7 @@ export interface ValidatedRow extends ImportRow {
 type Db = ReturnType<typeof createAdminClient>;
 
 /** Validate rows against the DB and within the file (duplicate SKU/barcode, required fields). */
-async function validateRows(db: Db, rows: ImportRow[]): Promise<ValidatedRow[]> {
+async function validateRows(db: Db, rows: ParsedProductRow[]): Promise<ValidatedRow[]> {
   const skus = rows.map((r) => r.sku?.trim()).filter(Boolean);
   const barcodes = rows.map((r) => r.barcode?.trim()).filter(Boolean) as string[];
 
@@ -273,60 +276,105 @@ async function validateRows(db: Db, rows: ImportRow[]): Promise<ValidatedRow[]> 
     if (!Number.isFinite(r.qty) || r.qty < 0) errors.push("Invalid qty");
     if (sku) seenSku.add(sku);
     if (barcode) seenBarcode.add(barcode);
-    return { ...r, sku, barcode, line: i + 1, status: errors.length ? "error" : "ok", errors };
+    return { line: i + 1, name: (r.name ?? "").trim(), sku, price: r.price, qty: r.qty, status: errors.length ? "error" : "ok", errors };
   });
 }
 
 /** Dry-run: validate the parsed CSV rows without writing anything. */
-export async function validateProductImport(rows: ImportRow[]): Promise<ValidatedRow[] | { error: string }> {
+export async function validateProductImport(rows: ParsedProductRow[]): Promise<ValidatedRow[] | { error: string }> {
   if (!(await requireManager())) return { error: "Not authorized." };
   const v = importRowsSchema.safeParse(rows);
   if (!v.success) return { error: firstIssue(v.error) };
   return validateRows(createAdminClient(), rows);
 }
 
-/** Import only the rows that pass validation; posts opening stock for qty > 0. */
-export async function importProducts(rows: ImportRow[]) {
-  if (!(await requireManager())) return { error: "Not authorized." };
+/** Normalise a CSV discount cell to the engine's enum (or null). */
+function parseDiscountType(s?: string): "PERCENT" | "FIXED" | null {
+  const t = (s ?? "").trim().toUpperCase();
+  if (t === "PERCENT" || t === "PERCENTAGE" || t === "%") return "PERCENT";
+  if (t === "FIXED" || t === "FLAT" || t === "AMOUNT") return "FIXED";
+  return null;
+}
+
+/** Treat anything explicitly "off" as archived; everything else stays active. */
+function isArchivedStatus(s?: string): boolean {
+  return ["archived", "inactive", "disabled", "off", "false", "no"].includes((s ?? "").trim().toLowerCase());
+}
+
+/** Find (case-insensitive) or create a category, optionally under a parent. */
+async function findOrCreateCategory(db: Db, name: string, parentId: string | null): Promise<string | null> {
+  const clean = name.trim();
+  if (!clean) return parentId;
+  let q = db.from("categories").select("id").ilike("name", clean);
+  q = parentId ? q.eq("parent_id", parentId) : q.is("parent_id", null);
+  const { data: found } = await q.maybeSingle();
+  if (found) return found.id as string;
+  const { data: created } = await db.from("categories").insert({ name: clean, parent_id: parentId }).select("id").single();
+  return (created?.id as string) ?? parentId;
+}
+
+/** Resolve the most specific category id for a row (creates missing ones). */
+async function resolveCategoryId(db: Db, category?: string, subCategory?: string): Promise<string | null> {
+  let parentId: string | null = null;
+  if (category?.trim()) parentId = await findOrCreateCategory(db, category, null);
+  if (subCategory?.trim()) return findOrCreateCategory(db, subCategory, parentId);
+  return parentId;
+}
+
+/** Import each valid row as a complete product (all fields + image). */
+export async function importProducts(rows: ParsedProductRow[]) {
+  const user = await requireManager();
+  if (!user) return { error: "Not authorized." };
   const v = importRowsSchema.safeParse(rows);
   if (!v.success) return { error: firstIssue(v.error) };
   const db = createAdminClient();
   const validated = await validateRows(db, rows);
-  const valid = validated.filter((r) => r.status === "ok");
-
-  const { data: locs } = await db.from("locations").select("id, code").in("code", ["SUP", "MAIN"]);
-  const sup = locs?.find((l) => l.code === "SUP")?.id;
-  const main = locs?.find((l) => l.code === "MAIN")?.id;
+  const validLines = new Set(validated.filter((r) => r.status === "ok").map((r) => r.line));
+  const valid = rows.filter((_, i) => validLines.has(i + 1));
 
   let created = 0;
   for (const r of valid) {
-    const { data: product, error } = await db
-      .from("products")
-      .insert({ name: r.name.trim(), sku: r.sku, default_sale_price: r.price || 0, has_variants: false })
-      .select("id").single();
-    if (error || !product) continue;
-    const { data: variant } = await db
-      .from("product_variants")
-      .insert({ product_id: product.id, sku: r.sku, cost: r.cost || 0, sale_price: r.price || 0, is_default: true })
-      .select("id").single();
-    if (!variant) continue;
-    if (r.barcode) {
-      await db.from("product_barcodes").insert({
-        product_id: product.id, variant_id: variant.id, barcode: r.barcode,
-        type: /^\d{13}$/.test(r.barcode) ? "EAN" : "INTERNAL", is_primary: true,
-      });
+    const categoryId = await resolveCategoryId(db, r.category, r.sub_category);
+    const payload = {
+      name: r.name.trim(),
+      brand: r.brand?.trim() || null,
+      category_id: categoryId,
+      description: r.description?.trim() || null,
+      base_unit: r.unit?.trim() || "pcs",
+      base_price: r.price || 0,
+      has_variants: false,
+      options: [],
+      variants: [{
+        sku: r.sku.trim(),
+        barcode: r.barcode?.trim() || null,
+        sale_price: r.price || 0,
+        cost: r.cost || 0,
+        reorder_point: r.low_stock || 0,
+        default_discount_type: parseDiscountType(r.discount_type),
+        default_discount_value: r.discount_value || 0,
+        opening_qty: r.qty || 0,
+        option_values: [],
+      }],
+      slug: `${slugify(r.name)}-${slugify(r.sku)}`,
+      created_by: user.id,
+    };
+    const { data: productId, error } = await db.rpc("create_product_full", { payload });
+    if (error || !productId) continue;
+
+    // Image(s): one or more URLs separated by "|" (first = cover), mirroring the
+    // gallery so a CSV image link displays exactly like an uploaded photo.
+    const urls = (r.image_url ?? "").split("|").map((u) => u.trim()).filter((u) => /^https?:\/\/\S+$/i.test(u));
+    if (urls.length) {
+      await db.from("store_listings").upsert({ product_id: productId, images: urls }, { onConflict: "product_id" });
+      await db.from("products").update({ image_url: urls[0] }).eq("id", productId);
     }
-    if (r.qty > 0 && sup && main) {
-      await db.from("stock_moves").insert({
-        product_id: product.id, variant_id: variant.id, qty: r.qty, from_location_id: sup, to_location_id: main,
-        unit_cost: r.cost || 0, reference_type: "OPENING", source: "IMPORT", note: "CSV import",
-      });
-    }
+    // Status: default active; archive only when explicitly marked off.
+    if (isArchivedStatus(r.status)) await db.from("products").update({ active: false }).eq("id", productId);
+
     created++;
   }
-  revalidatePath("/admin/products");
-  revalidatePath("/admin/stock");
-  return { ok: true as const, created, skipped: validated.length - valid.length };
+  revalidateProductSurfaces();
+  return { ok: true as const, created, skipped: rows.length - created };
 }
 
 /**
@@ -430,6 +478,28 @@ export async function uploadProductImage(productId: string, formData: FormData) 
   if ("error" in up) return { error: up.error };
 
   const images = [...(await currentImages(db, productId)), up.url];
+  const sync = await syncGallery(db, productId, images);
+  if (sync.error) return { error: sync.error };
+
+  revalidateProductSurfaces();
+  return { ok: true as const, images };
+}
+
+/**
+ * Add a product photo by pasted image URL (no upload). Mirrors uploadProductImage
+ * — appends to the gallery (first photo = cover), syncs the cover — so a URL and
+ * an uploaded file save and display identically. Also used by the CSV importer's
+ * image column.
+ */
+export async function addProductImageUrl(productId: string, rawUrl: string) {
+  if (!(await requireManager())) return { error: "Not authorized." };
+  const url = rawUrl.trim();
+  if (!/^https?:\/\/\S+$/i.test(url)) return { error: "Enter a valid image URL (http:// or https://)." };
+
+  const db = createAdminClient();
+  const existing = await currentImages(db, productId);
+  if (existing.includes(url)) return { error: "That image is already in the gallery." };
+  const images = [...existing, url];
   const sync = await syncGallery(db, productId, images);
   if (sync.error) return { error: sync.error };
 

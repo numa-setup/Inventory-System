@@ -10,11 +10,15 @@ export function AppShell({
   role,
   userName,
   unreadCount,
+  storeName,
+  logoUrl,
   children,
 }: {
   role: Role;
   userName: string;
   unreadCount?: number;
+  storeName?: string;
+  logoUrl?: string;
   children: React.ReactNode;
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -26,6 +30,8 @@ export function AppShell({
           role={role}
           mobileOpen={mobileOpen}
           onClose={() => setMobileOpen(false)}
+          storeName={storeName}
+          logoUrl={logoUrl}
         />
         <div className="lg:pl-64">
           <Topbar

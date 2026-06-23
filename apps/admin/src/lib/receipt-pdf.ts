@@ -1,6 +1,32 @@
-import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
+import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage, type PDFImage } from "pdf-lib";
 import type { ReceiptData } from "./receipt";
 import { amountToWords } from "./number-to-words";
+
+// Logo box at the top of the invoice header (keeps aspect ratio inside it).
+const LOGO_MAX_W = 96;
+const LOGO_MAX_H = 50;
+
+/**
+ * Fetch the store logo and embed it. pdf-lib only handles PNG/JPEG, so WebP/AVIF
+ * (or any fetch/CORS failure) just returns null and the receipt falls back to the
+ * text-only header — the invoice never breaks because of a logo.
+ */
+async function loadLogo(doc: PDFDocument, url?: string): Promise<{ img: PDFImage; w: number; h: number } | null> {
+  if (!url) return null;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    const isPng = bytes[0] === 0x89 && bytes[1] === 0x50;
+    const isJpg = bytes[0] === 0xff && bytes[1] === 0xd8;
+    if (!isPng && !isJpg) return null; // WebP/AVIF/etc. unsupported by pdf-lib
+    const img = isPng ? await doc.embedPng(bytes) : await doc.embedJpg(bytes);
+    const scale = Math.min(LOGO_MAX_W / img.width, LOGO_MAX_H / img.height, 1);
+    return { img, w: img.width * scale, h: img.height * scale };
+  } catch {
+    return null;
+  }
+}
 
 const PKR = (n: number) => "Rs " + Math.round(n).toLocaleString("en-PK");
 const NUM = (n: number) => Math.round(n).toLocaleString("en-PK");
@@ -85,6 +111,7 @@ export async function buildReceiptPdf(d: ReceiptData): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   const reg = await doc.embedFont(StandardFonts.Courier);
   const bold = await doc.embedFont(StandardFonts.CourierBold);
+  const logo = await loadLogo(doc, d.store.logo_url);
 
   // Column x positions
   const xSr = M;
@@ -116,6 +143,7 @@ export async function buildReceiptPdf(d: ReceiptData): Promise<Uint8Array> {
 
   // Section heights (top → bottom)
   let h = M; // top margin
+  if (logo) h += logo.h + 6; // logo + gap
   h += 14; // shop name
   if (d.store.address) h += 9;
   if (d.store.phone) h += 9;
@@ -144,6 +172,10 @@ export async function buildReceiptPdf(d: ReceiptData): Promise<Uint8Array> {
   const ctx: Ctx = { page, reg, bold, y: h - M };
 
   // ---- Shop header ----
+  if (logo) {
+    ctx.page.drawImage(logo.img, { x: (W - logo.w) / 2, y: ctx.y - logo.h, width: logo.w, height: logo.h });
+    ctx.y -= logo.h + 6;
+  }
   center(ctx, d.store.name, 11, true); ctx.y -= 14;
   if (d.store.address) { center(ctx, d.store.address, 7); ctx.y -= 9; }
   if (d.store.phone) { center(ctx, d.store.phone, 7); ctx.y -= 9; }

@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Loader2, Store, Users, ShieldCheck, Boxes, Receipt, Plug, Palette, Database,
-  Plus, KeyRound, Moon, Sun, Upload, Download,
+  Plus, KeyRound, Moon, Sun, Upload, Download, ImagePlus, Trash2,
 } from "lucide-react";
 import { PageHeader } from "@hamza/shared/ui/PageHeader";
 import { Card, CardHeader, CardTitle, CardBody } from "@hamza/shared/ui/Card";
@@ -21,8 +21,11 @@ import { cn } from "@hamza/shared/utils";
 import {
   updateStoreProfile, updateInventorySettings, updateSalesSettings, updateIntegrations,
   inviteUser, updateUserRole, setUserActive, resetUserPassword, changePassword,
-  importProductsCSV, exportProductsCSV,
+  importProductsCSV, exportProductsCSV, uploadLogo,
 } from "./actions";
+
+const LOGO_TYPES = ["image/png", "image/jpeg", "image/jpg", "image/webp", "image/avif"];
+const LOGO_MAX_BYTES = 5_242_880; // 5 MB
 
 export interface SettingsData {
   store_name: string; costing_method: "WEIGHTED_AVERAGE" | "FIFO"; tax_percent: number; currency: string;
@@ -99,8 +102,28 @@ function OwnerNote({ isOwner }: { isOwner: boolean }) {
 /* ---------------- Store profile ---------------- */
 function StoreSection({ data, isOwner }: { data: SettingsData; isOwner: boolean }) {
   const { saving, run } = useSaver();
+  const toast = useToast();
   const [f, setF] = useState(data);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const logoInput = useRef<HTMLInputElement>(null);
   const set = (k: keyof SettingsData) => (e: React.ChangeEvent<HTMLInputElement>) => setF((s) => ({ ...s, [k]: e.target.value }));
+
+  async function onLogoFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (!LOGO_TYPES.includes(file.type)) return toast("Logo must be a PNG, JPG or WebP image.", "error");
+    if (file.size > LOGO_MAX_BYTES) return toast("Logo must be under 5 MB.", "error");
+    setUploadingLogo(true);
+    const fd = new FormData();
+    fd.append("file", file);
+    const res = await uploadLogo(fd);
+    setUploadingLogo(false);
+    if ("error" in res) return toast(res.error, "error");
+    setF((s) => ({ ...s, logo_url: res.url }));
+    toast("Logo uploaded — click Save profile to apply it everywhere.");
+  }
+
   return (
     <Card>
       <CardHeader><CardTitle className="flex items-center gap-2"><Store className="h-4 w-4" /> Store profile</CardTitle></CardHeader>
@@ -116,7 +139,34 @@ function StoreSection({ data, isOwner }: { data: SettingsData; isOwner: boolean 
             <div><Label>Tax / GST (%)</Label><Input type="number" value={f.tax_percent} disabled={!isOwner} onChange={set("tax_percent")} /></div>
             <div><Label>NTN / Tax #</Label><Input value={f.ntn} disabled={!isOwner} onChange={set("ntn")} /></div>
           </div>
-          <div><Label>Logo URL</Label><Input value={f.logo_url} disabled={!isOwner} onChange={set("logo_url")} placeholder="https://…" /></div>
+          <div className="space-y-2">
+            <Label>Store logo</Label>
+            <div className="flex items-start gap-3">
+              <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-surface-2">
+                {f.logo_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={f.logo_url} alt="Store logo" className="h-full w-full object-contain" />
+                ) : (
+                  <Store className="h-6 w-6 text-text-tertiary" />
+                )}
+              </div>
+              <div className="min-w-0 flex-1 space-y-2">
+                <div className="flex flex-wrap gap-2">
+                  <input ref={logoInput} type="file" accept="image/png,image/jpeg,image/webp,image/avif" className="hidden" onChange={onLogoFile} />
+                  <Button type="button" variant="secondary" size="sm" disabled={!isOwner || uploadingLogo} onClick={() => logoInput.current?.click()}>
+                    {uploadingLogo ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />} {f.logo_url ? "Replace" : "Upload"}
+                  </Button>
+                  {f.logo_url && (
+                    <Button type="button" variant="ghost" size="sm" disabled={!isOwner || uploadingLogo} onClick={() => setF((s) => ({ ...s, logo_url: "" }))}>
+                      <Trash2 className="h-4 w-4" /> Remove
+                    </Button>
+                  )}
+                </div>
+                <Input value={f.logo_url} disabled={!isOwner} onChange={set("logo_url")} placeholder="…or paste an image URL (https://…)" />
+                <p className="text-[11px] text-text-tertiary">Upload a file or paste a URL. PNG/JPG/WebP up to 5 MB. Shows in the admin header and on invoices/receipts after you Save.</p>
+              </div>
+            </div>
+          </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <div><Label>Receipt header</Label><Input value={f.receipt_header} disabled={!isOwner} onChange={set("receipt_header")} /></div>
             <div><Label>Receipt footer</Label><Input value={f.receipt_footer} disabled={!isOwner} onChange={set("receipt_footer")} placeholder="Thank you!" /></div>

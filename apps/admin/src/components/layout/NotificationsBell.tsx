@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Bell, Loader2, ShoppingBag, CheckCheck } from "lucide-react";
+import { Bell, Loader2, ShoppingBag, CheckCheck, X, ExternalLink, Clock, Tag } from "lucide-react";
+import { Button } from "@hamza/shared/ui/Button";
 import { getAdminNotifications, markNotificationsRead, type AdminNotification } from "@/features/notifications/actions";
 
 function timeAgo(iso: string): string {
@@ -13,12 +14,32 @@ function timeAgo(iso: string): string {
   return `${Math.floor(s / 86400)}d ago`;
 }
 
+function fullTime(iso: string): string {
+  return new Date(iso).toLocaleString(undefined, {
+    weekday: "short", year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
+  });
+}
+
+/** Human label for a notification event/type (e.g. "order.placed" → "Order placed"). */
+function typeLabel(event: string): string {
+  return event.replace(/[._-]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/** The in-app destination for a notification, if any. */
+function relatedLink(n: AdminNotification): { href: string; label: string } | null {
+  if (n.order_no || n.event.startsWith("order")) return { href: "/admin/orders", label: "Open order" };
+  if (n.event.startsWith("stock") || n.event.includes("low_stock")) return { href: "/admin/stock", label: "Open stock" };
+  if (n.event.startsWith("product")) return { href: "/admin/products", label: "Open product" };
+  return null;
+}
+
 export function NotificationsBell({ unread: initialUnread }: { unread: number }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [unread, setUnread] = useState(initialUnread);
   const [items, setItems] = useState<AdminNotification[]>([]);
   const [loading, setLoading] = useState(false);
+  const [detail, setDetail] = useState<AdminNotification | null>(null);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => setUnread(initialUnread), [initialUnread]);
@@ -46,10 +67,23 @@ export function NotificationsBell({ unread: initialUnread }: { unread: number })
   }
 
   async function openItem(n: AdminNotification) {
+    // Open the detail panel and mark this one read (optimistically), keeping the
+    // unread badge correct. The dropdown closes; the panel shows the full content.
     setOpen(false);
-    if (!n.read_at) { setUnread((u) => Math.max(0, u - 1)); await markNotificationsRead([n.id]); }
-    if (n.order_no || n.event.startsWith("order")) router.push("/admin/orders");
-    router.refresh();
+    const readAt = n.read_at ?? new Date().toISOString();
+    setDetail({ ...n, read_at: readAt });
+    if (!n.read_at) {
+      setUnread((u) => Math.max(0, u - 1));
+      setItems((xs) => xs.map((x) => (x.id === n.id ? { ...x, read_at: readAt } : x)));
+      await markNotificationsRead([n.id]);
+      router.refresh();
+    }
+  }
+
+  function goToRelated(n: AdminNotification) {
+    const link = relatedLink(n);
+    setDetail(null);
+    if (link) { router.push(link.href); router.refresh(); }
   }
 
   return (
@@ -97,6 +131,45 @@ export function NotificationsBell({ unread: initialUnread }: { unread: number })
                 </div>
               </button>
             ))}
+          </div>
+        </div>
+      )}
+
+      {detail && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-fade-in" onClick={() => setDetail(null)} />
+          <div role="dialog" aria-modal="true" aria-labelledby="notif-title" className="relative z-10 w-full max-w-md overflow-hidden rounded-2xl border border-border bg-surface shadow-drawer animate-pop">
+            <div className="flex items-start gap-3 border-b border-border px-5 py-4">
+              <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-purple-tile text-purple-text">
+                <ShoppingBag className="h-4 w-4" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h2 id="notif-title" className="font-heading text-base font-semibold text-text-primary">{detail.title}</h2>
+                <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-text-tertiary">
+                  <span className="inline-flex items-center gap-1"><Tag className="h-3 w-3" /> {typeLabel(detail.event)}</span>
+                  <span className="inline-flex items-center gap-1"><Clock className="h-3 w-3" /> {fullTime(detail.created_at)}</span>
+                </div>
+              </div>
+              <button onClick={() => setDetail(null)} className="rounded-lg p-1.5 text-text-tertiary hover:bg-surface-2" aria-label="Close">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="px-5 py-4">
+              <p className="whitespace-pre-wrap text-sm leading-relaxed text-text-secondary">
+                {detail.body || "No additional details."}
+              </p>
+              {detail.order_no && (
+                <p className="mt-3 text-xs text-text-tertiary">Order <span className="font-medium text-text-primary">{detail.order_no}</span></p>
+              )}
+            </div>
+            <div className="flex justify-end gap-2 border-t border-border px-5 py-3">
+              <Button variant="ghost" onClick={() => setDetail(null)}>Close</Button>
+              {relatedLink(detail) && (
+                <Button onClick={() => goToRelated(detail)}>
+                  <ExternalLink className="h-4 w-4" /> {relatedLink(detail)!.label}
+                </Button>
+              )}
+            </div>
           </div>
         </div>
       )}
