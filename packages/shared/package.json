@@ -4,10 +4,16 @@
   "private": true,
   "description": "Shared code for the Hamza Store monorepo: supabase clients, auth, discounts, pricing, validation, utils, log, dates, notifications, promotions, UI components and theme. Consumed as source (transpiled by each app).",
   "type": "module",
+  "scripts": {
+    "test": "vitest run"
+  },
   "exports": {
     ".": "./src/index.ts",
     "./ui/*": "./src/ui/*.tsx",
     "./theme/*": "./src/theme/*.tsx",
     "./*": "./src/*.ts"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.9"
   }
 }

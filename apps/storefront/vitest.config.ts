@@ -1,13 +1,12 @@
 import { defineConfig } from "vitest/config";
 import { fileURLToPath } from "node:url";
 
-const shared = (p: string) => fileURLToPath(new URL(`./packages/shared/src/${p}`, import.meta.url));
+const shared = (p: string) => fileURLToPath(new URL(`../../packages/shared/src/${p}`, import.meta.url));
 
 export default defineConfig({
   test: {
     environment: "node",
-    // App tests + the shared package's own tests (moved alongside their modules).
-    include: ["src/**/*.test.ts", "packages/shared/src/**/*.test.ts"],
+    include: ["src/**/*.test.ts"],
   },
   resolve: {
     alias: [

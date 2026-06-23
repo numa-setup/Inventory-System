@@ -27,10 +27,10 @@ const cormorant = Cormorant_Garamond({
 
 export const metadata: Metadata = {
   title: {
-    default: "Hamza General Store — Admin",
+    default: "Hamza General Store",
     template: "%s · Hamza General Store",
   },
-  description: "Inventory management & point-of-sale for Hamza General Store.",
+  description: "Shop groceries, household essentials and more at Hamza General Store.",
 };
 
 export default function RootLayout({
