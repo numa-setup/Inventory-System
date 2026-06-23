@@ -1,11 +1,13 @@
 "use client";
 
-import { Menu, Moon, ScanLine, Sun } from "lucide-react";
+import { Menu, Moon, ScanLine, Sun, LogOut } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useTheme } from "@hamza/shared/theme/ThemeProvider";
 import { useScan } from "@/components/scan/ScanProvider";
 import { GlobalSearch } from "./GlobalSearch";
 import { NotificationsBell } from "./NotificationsBell";
 import { Avatar } from "@hamza/shared/ui/Avatar";
+import { signOutAdmin } from "@/features/auth/actions";
 
 export function Topbar({
   onMenu,
@@ -20,6 +22,13 @@ export function Topbar({
 }) {
   const { theme, toggle } = useTheme();
   const { openCamera } = useScan();
+  const router = useRouter();
+
+  async function onSignOut() {
+    await signOutAdmin();
+    router.push("/login");
+    router.refresh();
+  }
 
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-border bg-page/80 px-4 backdrop-blur-md lg:px-6">
@@ -62,7 +71,7 @@ export function Topbar({
         <NotificationsBell unread={unreadCount} />
 
         {/* Profile */}
-        <div className="ml-1 flex items-center gap-2.5 rounded-lg py-1 pl-1 pr-2 hover:bg-surface-2">
+        <div className="ml-1 flex items-center gap-2.5 rounded-lg py-1 pl-1 pr-2">
           <Avatar name={userName} size={34} />
           <div className="hidden text-left leading-tight sm:block">
             <div className="text-sm font-semibold text-text-primary">
@@ -73,6 +82,16 @@ export function Topbar({
             </div>
           </div>
         </div>
+
+        {/* Sign out */}
+        <button
+          onClick={onSignOut}
+          className="rounded-lg p-2 text-text-secondary hover:bg-surface-2 hover:text-coral-text"
+          aria-label="Sign out"
+          title="Sign out"
+        >
+          <LogOut className="h-5 w-5" />
+        </button>
       </div>
     </header>
   );
