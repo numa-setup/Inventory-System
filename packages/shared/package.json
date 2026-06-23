@@ -1,0 +1,9 @@
+{
+  "name": "@hamza/shared",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Shared code for the Hamza Store monorepo (supabase clients, lib, ui, theme). Empty placeholder in Phase 1; populated in Phase 2 per MONOREPO-MIGRATION-PLAN.md.",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

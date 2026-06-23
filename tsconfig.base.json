@@ -1,4 +1,6 @@
 {
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "//": "Shared compiler options for the monorepo. Created in Phase 1 as a skeleton; the per-app and per-package tsconfigs will extend this in Phases 2-4 (see MONOREPO-MIGRATION-PLAN.md). The existing app's tsconfig.json is left untouched in Phase 1.",
   "compilerOptions": {
     "target": "ES2022",
     "lib": ["dom", "dom.iterable", "esnext"],
@@ -12,12 +14,6 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "jsx": "preserve",
-    "incremental": true,
-    "plugins": [{ "name": "next" }],
-    "paths": {
-      "@/*": ["./src/*"]
-    }
-  },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules", "apps", "packages"]
+    "incremental": true
+  }
 }

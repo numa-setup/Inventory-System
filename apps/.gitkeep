@@ -1,0 +1,4 @@
+# Placeholder so the `apps/` workspace folder exists.
+# Phase 3 adds apps/admin and Phase 4 adds apps/storefront (see
+# MONOREPO-MIGRATION-PLAN.md). Until then the `apps/*` workspace glob
+# intentionally matches no packages.
