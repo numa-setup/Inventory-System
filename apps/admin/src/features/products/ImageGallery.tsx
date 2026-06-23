@@ -4,7 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import { ImagePlus, Loader2, Trash2, Star, Package } from "lucide-react";
 import { useToast } from "@hamza/shared/ui/Toast";
 import { Button } from "@hamza/shared/ui/Button";
-import { getProductImages, uploadProductImages, removeProductImageUrl, setPrimaryProductImage } from "./actions";
+import { getProductImages, uploadProductImage, removeProductImageUrl, setPrimaryProductImage } from "./actions";
+
+const ALLOWED = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+const MAX_BYTES = 5_242_880; // 5 MB
 
 export function ImageGallery({ productId, onChanged }: { productId: string; onChanged?: () => void }) {
   const toast = useToast();
@@ -21,13 +24,39 @@ export function ImageGallery({ productId, onChanged }: { productId: string; onCh
     const files = e.target.files;
     e.target.value = "";
     if (!files || !files.length) return;
+
+    // Validate up-front so the user gets an instant, visible error.
+    const picked = Array.from(files);
+    const bad = picked.find((f) => !ALLOWED.includes(f.type) || f.size > MAX_BYTES);
+    if (bad) {
+      return toast(
+        !ALLOWED.includes(bad.type) ? `“${bad.name}” must be a JPG, PNG or WebP.` : `“${bad.name}” is over 5 MB.`,
+        "error",
+      );
+    }
+
     setBusy(true);
-    const fd = new FormData();
-    Array.from(files).forEach((f) => fd.append("files", f));
-    const res = await uploadProductImages(productId, fd);
-    setBusy(false);
-    if (res && "error" in res && res.error) return toast(res.error, "error");
-    if (res && "images" in res && res.images) { setImages(res.images); toast("Photos added"); onChanged?.(); }
+    let added = 0;
+    try {
+      // Upload one file per request (same mechanism as the variant upload) so the
+      // body never approaches the server-action size limit. Each success updates
+      // the grid immediately.
+      for (const file of picked) {
+        const fd = new FormData();
+        fd.append("file", file);
+        const res = await uploadProductImage(productId, fd);
+        if (res && "error" in res && res.error) {
+          toast(`“${file.name}”: ${res.error}`, "error");
+          continue;
+        }
+        if (res && "images" in res && res.images) { setImages(res.images); added++; }
+      }
+    } catch (err) {
+      toast(err instanceof Error && err.message ? err.message : "Photo upload failed — please try again.", "error");
+    } finally {
+      setBusy(false);
+    }
+    if (added > 0) { toast(added > 1 ? `${added} photos added` : "Photo added"); onChanged?.(); }
   }
   async function remove(url: string) {
     setBusy(true);

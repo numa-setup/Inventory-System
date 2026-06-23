@@ -18,7 +18,7 @@ import { EmptyState } from "@hamza/shared/ui/EmptyState";
 import { useToast } from "@hamza/shared/ui/Toast";
 import { ExportMenu } from "@hamza/shared/ui/ExportMenu";
 import { cn, formatPKR } from "@hamza/shared/utils";
-import { createProduct, updateProduct, updateVariant, bulkSetPrice, searchProducts, setProductActive, permanentlyDeleteProduct, uploadProductImages, uploadVariantImage, removeVariantImage, type ProductInput, type VariantInput } from "./actions";
+import { createProduct, updateProduct, updateVariant, bulkSetPrice, searchProducts, setProductActive, permanentlyDeleteProduct, uploadProductImage, uploadVariantImage, removeVariantImage, type ProductInput, type VariantInput } from "./actions";
 
 const UNIT_OPTIONS = ["pcs", "kg", "g", "litre", "ml", "pack", "dozen", "box", "metre"];
 import { PRODUCTS_PAGE_SIZE, type ProductRow, type VariantRow, type ProductsPage } from "@/lib/products-query";
@@ -907,14 +907,17 @@ function AddProductDrawer({
     setSaving(true);
     const res = await createProduct(payload);
     if (res?.error) { setSaving(false); setErr(res.error); onError(res.error); return; }
-    // Upload any selected photos now that the product exists.
+    // Upload any selected photos now that the product exists — one request per
+    // file (same mechanism as the variant upload) so the body stays small.
     if (images.length && "id" in res && res.id) {
-      const fd = new FormData();
-      images.forEach((f) => fd.append("files", f));
-      const up = await uploadProductImages(res.id, fd);
-      if (up && "error" in up && up.error) {
-        // Product was created; only the photos failed — tell the user clearly.
-        onError(`Product saved, but photo upload failed: ${up.error}`);
+      for (const f of images) {
+        const fd = new FormData();
+        fd.append("file", f);
+        const up = await uploadProductImage(res.id, fd);
+        if (up && "error" in up && up.error) {
+          onError(`Product saved, but a photo failed: ${up.error}`);
+          break;
+        }
       }
     }
     setSaving(false);

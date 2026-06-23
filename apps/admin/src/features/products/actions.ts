@@ -368,14 +368,25 @@ export async function assignInternalBarcode(variantId: string, productId: string
 // store_listings.images[] is the gallery; products.image_url mirrors the first
 // (cover) image so cards / catalog_index / POS use it without joining listings.
 const IMAGE_BUCKET = "product-images";
+// Allowed photo types (matches the per-variant upload + the task spec).
+const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+const MAX_IMAGE_BYTES = 5_242_880; // 5 MB
 
-async function uploadOne(db: ReturnType<typeof createAdminClient>, productId: string, file: File): Promise<string | null> {
-  if (!(file instanceof File) || file.size === 0 || file.size > 5_242_880 || !file.type.startsWith("image/")) return null;
+/** Validate a single image File — same rules as the (working) variant upload. */
+function validateImageFile(file: unknown): { file: File } | { error: string } {
+  if (!(file instanceof File) || file.size === 0) return { error: "No image selected." };
+  if (!ALLOWED_IMAGE_TYPES.includes(file.type)) return { error: "Use a JPG, PNG or WebP image." };
+  if (file.size > MAX_IMAGE_BYTES) return { error: "Image must be under 5 MB." };
+  return { file };
+}
+
+/** Upload one file to storage and return its public URL (or an error message). */
+async function uploadOne(db: ReturnType<typeof createAdminClient>, productId: string, file: File): Promise<{ url: string } | { error: string }> {
   const ext = (file.name.split(".").pop() || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "");
   const path = `${productId}/${Date.now()}-${Math.random().toString(36).slice(2, 7)}.${ext}`;
   const { error } = await db.storage.from(IMAGE_BUCKET).upload(path, file, { upsert: true, contentType: file.type, cacheControl: "31536000" });
-  if (error) return null;
-  return db.storage.from(IMAGE_BUCKET).getPublicUrl(path).data.publicUrl;
+  if (error) return { error: error.message || "Upload failed — please try again." };
+  return { url: db.storage.from(IMAGE_BUCKET).getPublicUrl(path).data.publicUrl };
 }
 
 async function currentImages(db: ReturnType<typeof createAdminClient>, productId: string): Promise<string[]> {
@@ -387,9 +398,14 @@ async function currentImages(db: ReturnType<typeof createAdminClient>, productId
   return p?.image_url ? [p.image_url as string] : [];
 }
 
-async function syncGallery(db: ReturnType<typeof createAdminClient>, productId: string, images: string[]) {
-  await db.from("store_listings").upsert({ product_id: productId, images }, { onConflict: "product_id" });
-  await db.from("products").update({ image_url: images[0] ?? null }).eq("id", productId);
+/** Persist the gallery (store_listings.images) + cover (products.image_url).
+ *  Returns an error message if either write fails so the caller can surface it. */
+async function syncGallery(db: ReturnType<typeof createAdminClient>, productId: string, images: string[]): Promise<{ error?: string }> {
+  const { error: listErr } = await db.from("store_listings").upsert({ product_id: productId, images }, { onConflict: "product_id" });
+  if (listErr) return { error: listErr.message };
+  const { error: prodErr } = await db.from("products").update({ image_url: images[0] ?? null }).eq("id", productId);
+  if (prodErr) return { error: prodErr.message };
+  return {};
 }
 
 /** Current gallery images for a product (cover first). */
@@ -398,21 +414,26 @@ export async function getProductImages(productId: string): Promise<string[]> {
   return currentImages(createAdminClient(), productId);
 }
 
-/** Upload one or more photos; appends to the gallery and keeps the cover synced. */
-export async function uploadProductImages(productId: string, formData: FormData) {
+/**
+ * Upload ONE product photo, appended to the gallery (first photo = cover).
+ * Mirrors the per-variant upload (single file per request) so the body never
+ * approaches the server-action size limit — the client uploads multiple photos
+ * by calling this once per file.
+ */
+export async function uploadProductImage(productId: string, formData: FormData) {
   if (!(await requireManager())) return { error: "Not authorized." };
-  const files = formData.getAll("files").filter((f): f is File => f instanceof File && f.size > 0);
-  if (!files.length) return { error: "No images selected." };
-  if (files.some((f) => f.size > 5_242_880)) return { error: "Each image must be under 5 MB." };
+  const valid = validateImageFile(formData.get("file"));
+  if ("error" in valid) return { error: valid.error };
 
   const db = createAdminClient();
-  const urls: string[] = [];
-  for (const f of files.slice(0, 8)) { const u = await uploadOne(db, productId, f); if (u) urls.push(u); }
-  if (!urls.length) return { error: "Upload failed — please try again." };
+  const up = await uploadOne(db, productId, valid.file);
+  if ("error" in up) return { error: up.error };
 
-  const images = [...(await currentImages(db, productId)), ...urls];
-  await syncGallery(db, productId, images);
-  revalidatePath("/admin/products");
+  const images = [...(await currentImages(db, productId)), up.url];
+  const sync = await syncGallery(db, productId, images);
+  if (sync.error) return { error: sync.error };
+
+  revalidateProductSurfaces();
   return { ok: true as const, images };
 }
 
@@ -421,10 +442,11 @@ export async function removeProductImageUrl(productId: string, url: string) {
   if (!(await requireManager())) return { error: "Not authorized." };
   const db = createAdminClient();
   const images = (await currentImages(db, productId)).filter((u) => u !== url);
-  await syncGallery(db, productId, images);
+  const sync = await syncGallery(db, productId, images);
+  if (sync.error) return { error: sync.error };
   const path = url.split(`/${IMAGE_BUCKET}/`)[1];
   if (path) await db.storage.from(IMAGE_BUCKET).remove([path]);
-  revalidatePath("/admin/products");
+  revalidateProductSurfaces();
   return { ok: true as const, images };
 }
 
@@ -435,8 +457,9 @@ export async function setPrimaryProductImage(productId: string, url: string) {
   const cur = await currentImages(db, productId);
   if (!cur.includes(url)) return { error: "Image not found." };
   const images = [url, ...cur.filter((u) => u !== url)];
-  await syncGallery(db, productId, images);
-  revalidatePath("/admin/products");
+  const sync = await syncGallery(db, productId, images);
+  if (sync.error) return { error: sync.error };
+  revalidateProductSurfaces();
   return { ok: true as const, images };
 }
 
