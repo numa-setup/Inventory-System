@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { logError } from "@/lib/log";
+import { logError } from "@hamza/shared/log";
 
 // Last-resort boundary if the root layout itself throws. Must render <html>/<body>.
 export default function GlobalError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {

@@ -1,7 +1,7 @@
 "use client";
 
 import { createBrowserClient } from "@supabase/ssr";
-import type { Database } from "@/lib/supabase/types";
+import type { Database } from "./types";
 
 /** Browser-side Supabase client (anon key). Safe for client components. */
 export function createClient() {

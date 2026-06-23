@@ -1,5 +1,5 @@
-import type { createAdminClient } from "@/lib/supabase/admin";
-import type { AppliedPromo, Promotion } from "@/lib/discounts";
+import type { createAdminClient } from "./supabase/admin";
+import type { AppliedPromo, Promotion } from "./discounts";
 
 type Db = ReturnType<typeof createAdminClient>;
 

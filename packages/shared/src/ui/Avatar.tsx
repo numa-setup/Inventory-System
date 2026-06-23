@@ -1,4 +1,4 @@
-import { cn } from "@/lib/utils";
+import { cn } from "../utils";
 import { ACCENT_HEX, type Accent } from "./accent";
 
 const ACCENTS: Accent[] = ["blue", "teal", "green", "amber", "purple", "coral"];

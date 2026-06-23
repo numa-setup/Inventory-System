@@ -1,6 +1,6 @@
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createAdminClient } from "@hamza/shared/supabase/admin";
 import { getOrderByNo } from "@/lib/storefront";
-import { notifyOrderPlaced } from "@/lib/notifications/dispatch";
+import { notifyOrderPlaced } from "@hamza/shared/notifications/dispatch";
 import type { OnlineMethod } from "@/features/storefront/order-actions";
 
 /**

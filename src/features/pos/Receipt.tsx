@@ -2,11 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { CheckCircle2, Printer, MessageCircle, Plus, Loader2 } from "lucide-react";
-import { Button } from "@/components/ui/Button";
-import { useToast } from "@/components/ui/Toast";
+import { Button } from "@hamza/shared/ui/Button";
+import { useToast } from "@hamza/shared/ui/Toast";
 import { type ReceiptData } from "@/lib/receipt";
 import { buildReceiptPdf, openReceiptPdf } from "@/lib/receipt-pdf";
-import { normalizeWaNumber } from "@/lib/notifications/whatsapp";
+import { normalizeWaNumber } from "@hamza/shared/notifications/whatsapp";
 import { sendReceiptWhatsApp } from "./receipt-actions";
 
 /**

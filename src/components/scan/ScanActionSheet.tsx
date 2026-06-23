@@ -5,10 +5,10 @@ import { useRouter } from "next/navigation";
 import {
   X, Package, Tag, Boxes, ExternalLink, AlertTriangle, Loader2, Check,
 } from "lucide-react";
-import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
-import { useToast } from "@/components/ui/Toast";
-import { cn, formatPKR } from "@/lib/utils";
+import { Button } from "@hamza/shared/ui/Button";
+import { Input } from "@hamza/shared/ui/Input";
+import { useToast } from "@hamza/shared/ui/Toast";
+import { cn, formatPKR } from "@hamza/shared/utils";
 import { ensureCatalog, type CatalogItem } from "@/lib/catalog-cache";
 import { updateVariant } from "@/features/products/actions";
 import { adjustStock } from "@/features/stock/actions";

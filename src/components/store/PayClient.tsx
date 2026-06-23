@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Smartphone, Loader2, ShieldCheck, CheckCircle2 } from "lucide-react";
-import { formatPKR } from "@/lib/utils";
+import { formatPKR } from "@hamza/shared/utils";
 import { confirmOnlinePayment, type OnlineMethod } from "@/features/storefront/order-actions";
 
 const METHODS: { id: OnlineMethod; label: string; Icon: typeof Smartphone }[] = [

@@ -1,5 +1,5 @@
-import { createAdminClient } from "@/lib/supabase/admin";
-import { logError } from "@/lib/log";
+import { createAdminClient } from "../supabase/admin";
+import { logError } from "../log";
 
 // Notifications dispatcher. Sends order emails via Resend (real when a key is
 // configured in Settings → Integrations) and WhatsApp via a clean stub (no

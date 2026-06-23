@@ -1,4 +1,4 @@
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createAdminClient } from "@hamza/shared/supabase/admin";
 import type { JazzCashConfig } from "./jazzcash";
 import type { EasypaisaConfig } from "./easypaisa";
 

@@ -2,7 +2,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { type LucideIcon, TrendingUp, TrendingDown, Eye, EyeOff } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn } from "../utils";
 import { ACCENT_TILE, type Accent } from "./accent";
 import { Card } from "./Card";
 

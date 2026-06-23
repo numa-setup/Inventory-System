@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ProductMedia } from "./ProductMedia";
 import { WishlistButton } from "./WishlistButton";
-import { formatPKR } from "@/lib/utils";
+import { formatPKR } from "@hamza/shared/utils";
 import type { StoreProduct } from "@/lib/storefront";
 
 export function ProductCard({ p }: { p: StoreProduct }) {

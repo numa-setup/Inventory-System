@@ -14,7 +14,10 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-export type Role = "owner" | "manager" | "cashier";
+// Role now lives in the shared package; re-exported here so existing
+// `@/components/layout/nav` importers keep working.
+import type { Role } from "@hamza/shared/auth";
+export type { Role };
 
 export interface NavItem {
   label: string;

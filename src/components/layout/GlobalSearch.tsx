@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Search, Package, Receipt, FolderTree, Loader2 } from "lucide-react";
 import { globalSearch, type SearchResults } from "@/features/search/actions";
-import { formatPKR } from "@/lib/utils";
+import { formatPKR } from "@hamza/shared/utils";
 
 /** Topbar global instant search — products/SKU, invoices, categories. */
 export function GlobalSearch() {

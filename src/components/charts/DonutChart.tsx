@@ -1,7 +1,7 @@
 "use client";
 
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
-import { ACCENT_HEX, type Accent } from "@/components/ui/accent";
+import { ACCENT_HEX, type Accent } from "@hamza/shared/ui/accent";
 
 const ORDER: Accent[] = ["blue", "teal", "green", "amber", "purple", "coral"];
 

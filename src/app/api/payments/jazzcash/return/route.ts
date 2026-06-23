@@ -3,7 +3,7 @@ import { revalidatePath } from "next/cache";
 import { getJazzCashConfig } from "@/lib/payments/gateway";
 import { verifyJazzCashResponse } from "@/lib/payments/jazzcash";
 import { creditOrder } from "@/lib/payments/credit";
-import { logError } from "@/lib/log";
+import { logError } from "@hamza/shared/log";
 
 // JazzCash posts the payment result here. We re-verify the secure hash, and on a
 // successful, verified response credit the order, then send the customer to the

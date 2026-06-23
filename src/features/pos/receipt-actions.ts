@@ -1,9 +1,9 @@
 "use server";
 
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createAdminClient } from "@hamza/shared/supabase/admin";
 import { buildReceiptPdf } from "@/lib/receipt-pdf";
-import { sendWhatsAppDocument } from "@/lib/notifications/whatsapp";
-import { logError } from "@/lib/log";
+import { sendWhatsAppDocument } from "@hamza/shared/notifications/whatsapp";
+import { logError } from "@hamza/shared/log";
 import type { ReceiptData } from "@/lib/receipt";
 
 /**

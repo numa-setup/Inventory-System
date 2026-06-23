@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Heart, X } from "lucide-react";
 import { useWishlist } from "@/components/store/WishlistProvider";
 import { ProductMedia } from "@/components/store/ProductMedia";
-import { formatPKR } from "@/lib/utils";
+import { formatPKR } from "@hamza/shared/utils";
 
 export default function WishlistPage() {
   const { items, remove, clear } = useWishlist();

@@ -3,12 +3,12 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { FolderTree, Plus, Pencil, Trash2, Check, X, Loader2, CornerDownRight } from "lucide-react";
-import { PageHeader } from "@/components/ui/PageHeader";
-import { Card } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
-import { EmptyState } from "@/components/ui/EmptyState";
-import { useToast } from "@/components/ui/Toast";
+import { PageHeader } from "@hamza/shared/ui/PageHeader";
+import { Card } from "@hamza/shared/ui/Card";
+import { Button } from "@hamza/shared/ui/Button";
+import { Input } from "@hamza/shared/ui/Input";
+import { EmptyState } from "@hamza/shared/ui/EmptyState";
+import { useToast } from "@hamza/shared/ui/Toast";
 import { createCategory, updateCategory, deleteCategory } from "./actions";
 
 export interface CategoryNode {

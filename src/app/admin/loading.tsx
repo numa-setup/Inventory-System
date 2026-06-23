@@ -1,4 +1,4 @@
-import { Skeleton } from "@/components/ui/Skeleton";
+import { Skeleton } from "@hamza/shared/ui/Skeleton";
 
 // Shown while an admin screen's server data streams in.
 export default function AdminLoading() {

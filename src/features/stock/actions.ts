@@ -1,9 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { getCurrentUser } from "@/lib/auth";
-import { stockInSchema, adjustSchema, transferSchema, cycleCountSchema, firstIssue } from "@/lib/validation";
+import { createAdminClient } from "@hamza/shared/supabase/admin";
+import { getCurrentUser } from "@hamza/shared/auth";
+import { stockInSchema, adjustSchema, transferSchema, cycleCountSchema, firstIssue } from "@hamza/shared/validation";
 
 type Db = ReturnType<typeof createAdminClient>;
 

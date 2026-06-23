@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { revalidatePath } from "next/cache";
 import { easypaisaSucceeded } from "@/lib/payments/easypaisa";
 import { creditOrder } from "@/lib/payments/credit";
-import { logError } from "@/lib/log";
+import { logError } from "@hamza/shared/log";
 
 // Easypaisa posts the payment result here. On a successful status we credit the
 // order (idempotent), then send the customer to the confirmation page.

@@ -1,13 +1,13 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { placeOrderSchema, firstIssue } from "@/lib/validation";
-import { round2 } from "@/lib/pricing";
-import { computePromotions, type PromoLine } from "@/lib/discounts";
+import { createAdminClient } from "@hamza/shared/supabase/admin";
+import { placeOrderSchema, firstIssue } from "@hamza/shared/validation";
+import { round2 } from "@hamza/shared/pricing";
+import { computePromotions, type PromoLine } from "@hamza/shared/discounts";
 import { getDeliveryConfig, loadStorePromotions } from "@/lib/storefront";
-import { recordRedemptions } from "@/features/discounts/promotions";
-import { notifyOrderPlaced } from "@/lib/notifications/dispatch";
+import { recordRedemptions } from "@hamza/shared/promotions";
+import { notifyOrderPlaced } from "@hamza/shared/notifications/dispatch";
 import { getGatewayConfig } from "@/lib/payments/gateway";
 import { creditOrder } from "@/lib/payments/credit";
 

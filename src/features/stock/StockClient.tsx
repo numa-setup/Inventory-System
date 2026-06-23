@@ -7,18 +7,18 @@ import {
   PackagePlus, SlidersHorizontal, ArrowLeftRight, ClipboardCheck, History,
   ArrowDownLeft, ArrowUpRight, Barcode,
 } from "lucide-react";
-import { PageHeader } from "@/components/ui/PageHeader";
-import { Card } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
-import { Input, Label, FieldError } from "@/components/ui/Input";
-import { Select } from "@/components/ui/Select";
-import { Drawer } from "@/components/ui/Drawer";
-import { StatusPill } from "@/components/ui/StatusPill";
-import { StatTile } from "@/components/ui/StatTile";
-import { EmptyState } from "@/components/ui/EmptyState";
-import { useToast } from "@/components/ui/Toast";
-import { ExportMenu } from "@/components/ui/ExportMenu";
-import { cn, formatPKR, formatNumber } from "@/lib/utils";
+import { PageHeader } from "@hamza/shared/ui/PageHeader";
+import { Card } from "@hamza/shared/ui/Card";
+import { Button } from "@hamza/shared/ui/Button";
+import { Input, Label, FieldError } from "@hamza/shared/ui/Input";
+import { Select } from "@hamza/shared/ui/Select";
+import { Drawer } from "@hamza/shared/ui/Drawer";
+import { StatusPill } from "@hamza/shared/ui/StatusPill";
+import { StatTile } from "@hamza/shared/ui/StatTile";
+import { EmptyState } from "@hamza/shared/ui/EmptyState";
+import { useToast } from "@hamza/shared/ui/Toast";
+import { ExportMenu } from "@hamza/shared/ui/ExportMenu";
+import { cn, formatPKR, formatNumber } from "@hamza/shared/utils";
 import {
   stockIn, adjustStock, transferStock, cycleCount, getMovementHistory, type MoveRow,
 } from "./actions";

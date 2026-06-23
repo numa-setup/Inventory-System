@@ -7,20 +7,20 @@ import {
   Plus, Truck, Wallet, FileText, PackageCheck, Loader2, Trash2, Building2,
   Phone, Mail, ChevronRight, ChevronDown, Settings2, ShoppingCart, Info,
 } from "lucide-react";
-import { PageHeader } from "@/components/ui/PageHeader";
-import { Card } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
-import { Input, Label, FieldError } from "@/components/ui/Input";
-import { Select } from "@/components/ui/Select";
-import { Drawer } from "@/components/ui/Drawer";
-import { DataTable, type Column } from "@/components/ui/DataTable";
-import { StatTile } from "@/components/ui/StatTile";
-import { StatusPill } from "@/components/ui/StatusPill";
-import { EmptyState } from "@/components/ui/EmptyState";
-import { useToast } from "@/components/ui/Toast";
-import { VariantSearch, type VariantSearchItem } from "@/components/ui/VariantSearch";
-import { ExportMenu } from "@/components/ui/ExportMenu";
-import { formatPKR } from "@/lib/utils";
+import { PageHeader } from "@hamza/shared/ui/PageHeader";
+import { Card } from "@hamza/shared/ui/Card";
+import { Button } from "@hamza/shared/ui/Button";
+import { Input, Label, FieldError } from "@hamza/shared/ui/Input";
+import { Select } from "@hamza/shared/ui/Select";
+import { Drawer } from "@hamza/shared/ui/Drawer";
+import { DataTable, type Column } from "@hamza/shared/ui/DataTable";
+import { StatTile } from "@hamza/shared/ui/StatTile";
+import { StatusPill } from "@hamza/shared/ui/StatusPill";
+import { EmptyState } from "@hamza/shared/ui/EmptyState";
+import { useToast } from "@hamza/shared/ui/Toast";
+import { VariantSearch, type VariantSearchItem } from "@hamza/shared/ui/VariantSearch";
+import { ExportMenu } from "@hamza/shared/ui/ExportMenu";
+import { formatPKR } from "@hamza/shared/utils";
 import { createSupplier, createPurchaseOrder, type SupplierInput } from "./actions";
 
 export interface SupplierRow {

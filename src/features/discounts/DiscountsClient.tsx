@@ -3,16 +3,16 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Tag, Loader2, Info, Pencil, Trash2 } from "lucide-react";
-import { PageHeader } from "@/components/ui/PageHeader";
-import { Card } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
-import { Input, Label, FieldError } from "@/components/ui/Input";
-import { Select } from "@/components/ui/Select";
-import { Drawer } from "@/components/ui/Drawer";
-import { StatusPill } from "@/components/ui/StatusPill";
-import { EmptyState } from "@/components/ui/EmptyState";
-import { useToast } from "@/components/ui/Toast";
-import { formatPKR } from "@/lib/utils";
+import { PageHeader } from "@hamza/shared/ui/PageHeader";
+import { Card } from "@hamza/shared/ui/Card";
+import { Button } from "@hamza/shared/ui/Button";
+import { Input, Label, FieldError } from "@hamza/shared/ui/Input";
+import { Select } from "@hamza/shared/ui/Select";
+import { Drawer } from "@hamza/shared/ui/Drawer";
+import { StatusPill } from "@hamza/shared/ui/StatusPill";
+import { EmptyState } from "@hamza/shared/ui/EmptyState";
+import { useToast } from "@hamza/shared/ui/Toast";
+import { formatPKR } from "@hamza/shared/utils";
 import { createDiscount, updateDiscount, toggleDiscount, deleteDiscount, type DiscountInput } from "./actions";
 
 export interface PickerProduct { id: string; name: string }

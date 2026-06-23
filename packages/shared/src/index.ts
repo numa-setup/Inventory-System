@@ -1,7 +1,6 @@
-// Placeholder entry point for the shared package (@hamza/shared).
-//
-// Phase 1 of MONOREPO-MIGRATION-PLAN.md only wires up the workspace skeleton —
-// no real code lives here yet. Phase 2 moves the genuinely-shared modules into
-// this package (supabase clients, auth + Role, discounts, pricing, validation,
-// utils, log, dates, notifications, promotions, components/ui, components/theme).
-export {};
+// @hamza/shared — barrel entry point.
+// Consumers import via stable subpaths (e.g. "@hamza/shared/utils",
+// "@hamza/shared/pricing", "@hamza/shared/ui/Button",
+// "@hamza/shared/supabase/server"). This index re-exports the common,
+// dependency-free utilities for the bare "@hamza/shared" specifier.
+export * from "./utils";

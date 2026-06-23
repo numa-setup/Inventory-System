@@ -1,6 +1,6 @@
-import type { createClient } from "@/lib/supabase/server";
+import type { createClient } from "@hamza/shared/supabase/server";
 import { getVariantOptions } from "@/lib/catalog";
-import { bucketKey, bucketOf, type DateRange } from "@/lib/dates";
+import { bucketKey, bucketOf, type DateRange } from "@hamza/shared/dates";
 
 type Supabase = Awaited<ReturnType<typeof createClient>>;
 const iso = (d: Date) => d.toISOString();

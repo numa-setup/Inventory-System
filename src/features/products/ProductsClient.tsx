@@ -7,17 +7,17 @@ import {
   Plus, Search, Package, Loader2, Barcode, ChevronRight, ChevronDown,
   Pencil, Wand2, Layers, Tag, QrCode, Upload, Archive, ArchiveRestore, Trash2, AlertTriangle, ImagePlus, X,
 } from "lucide-react";
-import { PageHeader } from "@/components/ui/PageHeader";
-import { Card } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
-import { Input, Label, FieldError } from "@/components/ui/Input";
-import { Select } from "@/components/ui/Select";
-import { Drawer } from "@/components/ui/Drawer";
-import { StatusPill } from "@/components/ui/StatusPill";
-import { EmptyState } from "@/components/ui/EmptyState";
-import { useToast } from "@/components/ui/Toast";
-import { ExportMenu } from "@/components/ui/ExportMenu";
-import { cn, formatPKR } from "@/lib/utils";
+import { PageHeader } from "@hamza/shared/ui/PageHeader";
+import { Card } from "@hamza/shared/ui/Card";
+import { Button } from "@hamza/shared/ui/Button";
+import { Input, Label, FieldError } from "@hamza/shared/ui/Input";
+import { Select } from "@hamza/shared/ui/Select";
+import { Drawer } from "@hamza/shared/ui/Drawer";
+import { StatusPill } from "@hamza/shared/ui/StatusPill";
+import { EmptyState } from "@hamza/shared/ui/EmptyState";
+import { useToast } from "@hamza/shared/ui/Toast";
+import { ExportMenu } from "@hamza/shared/ui/ExportMenu";
+import { cn, formatPKR } from "@hamza/shared/utils";
 import { createProduct, updateProduct, updateVariant, bulkSetPrice, searchProducts, setProductActive, permanentlyDeleteProduct, uploadProductImages, uploadVariantImage, removeVariantImage, type ProductInput, type VariantInput } from "./actions";
 
 const UNIT_OPTIONS = ["pcs", "kg", "g", "litre", "ml", "pack", "dozen", "box", "metre"];

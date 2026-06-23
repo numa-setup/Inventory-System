@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
 import { ClipboardList } from "lucide-react";
-import { createClient } from "@/lib/supabase/server";
-import { resolveRange } from "@/lib/dates";
-import { PageHeader } from "@/components/ui/PageHeader";
-import { Card } from "@/components/ui/Card";
-import { EmptyState } from "@/components/ui/EmptyState";
-import { FilterBar } from "@/components/ui/FilterBar";
-import { ExportMenu } from "@/components/ui/ExportMenu";
+import { createClient } from "@hamza/shared/supabase/server";
+import { resolveRange } from "@hamza/shared/dates";
+import { PageHeader } from "@hamza/shared/ui/PageHeader";
+import { Card } from "@hamza/shared/ui/Card";
+import { EmptyState } from "@hamza/shared/ui/EmptyState";
+import { FilterBar } from "@hamza/shared/ui/FilterBar";
+import { ExportMenu } from "@hamza/shared/ui/ExportMenu";
 import { OrdersClient, type OrderFull } from "@/features/orders/OrdersClient";
 
 export const metadata: Metadata = { title: "Orders" };

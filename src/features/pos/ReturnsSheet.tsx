@@ -2,11 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { X, Search, Loader2, RotateCcw, Plus, Minus, AlertTriangle, Check } from "lucide-react";
-import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
-import { Select } from "@/components/ui/Select";
-import { useToast } from "@/components/ui/Toast";
-import { cn, formatPKR } from "@/lib/utils";
+import { Button } from "@hamza/shared/ui/Button";
+import { Input } from "@hamza/shared/ui/Input";
+import { Select } from "@hamza/shared/ui/Select";
+import { useToast } from "@hamza/shared/ui/Toast";
+import { cn, formatPKR } from "@hamza/shared/utils";
 import { ensureCatalog } from "@/lib/catalog-cache";
 import { getSaleForReturn, processReturn, type SaleForReturn } from "./returns";
 import type { PayMethod } from "./actions";

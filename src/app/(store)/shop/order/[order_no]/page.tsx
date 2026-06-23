@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Check } from "lucide-react";
 import { getOrderByNo } from "@/lib/storefront";
-import { formatPKR } from "@/lib/utils";
+import { formatPKR } from "@hamza/shared/utils";
 
 export const metadata = { title: "Order confirmed" };
 

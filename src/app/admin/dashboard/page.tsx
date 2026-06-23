@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import { createClient } from "@/lib/supabase/server";
-import { resolveRange } from "@/lib/dates";
+import { createClient } from "@hamza/shared/supabase/server";
+import { resolveRange } from "@hamza/shared/dates";
 import { buildDashboard } from "@/features/dashboard/queries";
 import { DashboardClient } from "@/features/dashboard/DashboardClient";
 

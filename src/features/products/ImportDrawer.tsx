@@ -2,10 +2,10 @@
 
 import { useRef, useState } from "react";
 import { Loader2, Upload, FileUp, CheckCircle2, AlertTriangle, ArrowLeft } from "lucide-react";
-import { Drawer } from "@/components/ui/Drawer";
-import { Button } from "@/components/ui/Button";
-import { useToast } from "@/components/ui/Toast";
-import { cn } from "@/lib/utils";
+import { Drawer } from "@hamza/shared/ui/Drawer";
+import { Button } from "@hamza/shared/ui/Button";
+import { useToast } from "@hamza/shared/ui/Toast";
+import { cn } from "@hamza/shared/utils";
 import { validateProductImport, importProducts, type ValidatedRow } from "./actions";
 import { parseProductCsv } from "@/lib/csv";
 

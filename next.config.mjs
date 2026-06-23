@@ -1,6 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // The shared workspace package is consumed as TypeScript source, so Next must
+  // transpile it (Phase 2 of the monorepo migration).
+  transpilePackages: ["@hamza/shared"],
   images: {
     formats: ["image/avif", "image/webp"],
     remotePatterns: [

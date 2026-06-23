@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@hamza/shared/supabase/server";
 import { getVariantOptions } from "@/lib/catalog";
 import { PurchasingClient, type SupplierRow, type PORow, type ReceiptRow } from "@/features/purchasing/PurchasingClient";
 

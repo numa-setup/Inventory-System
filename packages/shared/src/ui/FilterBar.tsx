@@ -5,8 +5,8 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { CalendarDays } from "lucide-react";
 import { Select } from "./Select";
 import { Input } from "./Input";
-import { PRESETS } from "@/lib/dates";
-import { cn } from "@/lib/utils";
+import { PRESETS } from "../dates";
+import { cn } from "../utils";
 
 export interface DimensionFilter {
   key: string;

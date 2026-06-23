@@ -1,6 +1,6 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { cookies } from "next/headers";
-import type { Database } from "@/lib/supabase/types";
+import type { Database } from "./types";
 
 /** Server-side Supabase client (anon key + user session via cookies). */
 export async function createClient() {

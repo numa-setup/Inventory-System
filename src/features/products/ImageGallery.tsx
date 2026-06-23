@@ -2,8 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ImagePlus, Loader2, Trash2, Star, Package } from "lucide-react";
-import { useToast } from "@/components/ui/Toast";
-import { Button } from "@/components/ui/Button";
+import { useToast } from "@hamza/shared/ui/Toast";
+import { Button } from "@hamza/shared/ui/Button";
 import { getProductImages, uploadProductImages, removeProductImageUrl, setPrimaryProductImage } from "./actions";
 
 export function ImageGallery({ productId, onChanged }: { productId: string; onChanged?: () => void }) {

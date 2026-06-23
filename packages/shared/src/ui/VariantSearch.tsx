@@ -3,7 +3,7 @@
 import { useMemo, useRef, useState } from "react";
 import { Barcode } from "lucide-react";
 import { Input } from "./Input";
-import { formatNumber } from "@/lib/utils";
+import { formatNumber } from "../utils";
 
 export interface VariantSearchItem {
   variant_id: string;

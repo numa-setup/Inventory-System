@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Smartphone, ShieldCheck } from "lucide-react";
-import { formatPKR } from "@/lib/utils";
+import { formatPKR } from "@hamza/shared/utils";
 
 type Provider = "jazzcash" | "easypaisa";
 const META: Record<Provider, { label: string }> = {

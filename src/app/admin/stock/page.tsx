@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@hamza/shared/supabase/server";
 import { StockClient, type StockRow, type PhysLocation } from "@/features/stock/StockClient";
 
 export const metadata: Metadata = { title: "Stock" };

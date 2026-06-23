@@ -3,9 +3,9 @@
 import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Store, Loader2 } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
-import { Button } from "@/components/ui/Button";
-import { Input, Label, FieldError } from "@/components/ui/Input";
+import { createClient } from "@hamza/shared/supabase/client";
+import { Button } from "@hamza/shared/ui/Button";
+import { Input, Label, FieldError } from "@hamza/shared/ui/Input";
 
 export default function LoginPage() {
   return (

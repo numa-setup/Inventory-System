@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@hamza/shared/supabase/server";
 import { getVariantOptions } from "@/lib/catalog";
 import { RecordPurchaseClient } from "@/features/purchasing/RecordPurchaseClient";
 

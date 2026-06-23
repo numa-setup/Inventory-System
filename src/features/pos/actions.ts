@@ -1,12 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { getCurrentUser } from "@/lib/auth";
-import { checkoutSchema, customerQuickSchema, firstIssue } from "@/lib/validation";
-import { computeTotals, paymentsSettle, round2 } from "@/lib/pricing";
-import { computePromotions, type PromoLine } from "@/lib/discounts";
-import { loadActivePromotions, recordRedemptions } from "@/features/discounts/promotions";
+import { createAdminClient } from "@hamza/shared/supabase/admin";
+import { getCurrentUser } from "@hamza/shared/auth";
+import { checkoutSchema, customerQuickSchema, firstIssue } from "@hamza/shared/validation";
+import { computeTotals, paymentsSettle, round2 } from "@hamza/shared/pricing";
+import { computePromotions, type PromoLine } from "@hamza/shared/discounts";
+import { loadActivePromotions, recordRedemptions } from "@hamza/shared/promotions";
 
 export interface CartLine {
   variant_id: string;

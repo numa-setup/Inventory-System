@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import { createClient } from "@/lib/supabase/server";
-import { getCurrentUser } from "@/lib/auth";
+import { createClient } from "@hamza/shared/supabase/server";
+import { getCurrentUser } from "@hamza/shared/auth";
 import { fetchProductsPage, PRODUCTS_PAGE_SIZE } from "@/lib/products-query";
 import { ProductsClient } from "@/features/products/ProductsClient";
 

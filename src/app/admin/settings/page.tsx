@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
-import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { getCurrentUser } from "@/lib/auth";
+import { createClient } from "@hamza/shared/supabase/server";
+import { createAdminClient } from "@hamza/shared/supabase/admin";
+import { getCurrentUser } from "@hamza/shared/auth";
 import { SettingsClient, type SettingsData, type UserRow } from "@/features/settings/SettingsClient";
 
 export const metadata: Metadata = { title: "Settings" };

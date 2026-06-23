@@ -1,9 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { getCurrentUser } from "@/lib/auth";
-import { returnSchema, firstIssue } from "@/lib/validation";
+import { createAdminClient } from "@hamza/shared/supabase/admin";
+import { getCurrentUser } from "@hamza/shared/auth";
+import { returnSchema, firstIssue } from "@hamza/shared/validation";
 import type { PayMethod } from "./actions";
 
 const round2 = (n: number) => Math.round(n * 100) / 100;

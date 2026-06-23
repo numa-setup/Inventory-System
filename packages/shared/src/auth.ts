@@ -1,6 +1,9 @@
 import "server-only";
-import { createClient } from "@/lib/supabase/server";
-import type { Role } from "@/components/layout/nav";
+import { createClient } from "./supabase/server";
+
+/** Staff role. Lives here (shared) so both apps can use it without reaching into
+ *  an admin-only component; the admin nav re-exports it for existing importers. */
+export type Role = "owner" | "manager" | "cashier";
 
 export interface CurrentUser {
   id: string;

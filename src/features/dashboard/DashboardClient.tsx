@@ -7,16 +7,16 @@ import {
   Banknote, TrendingUp, ClipboardList, PackageX, Wallet, Boxes, Radio,
   ArrowRight, CalendarClock,
 } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
-import { Card, CardHeader, CardTitle, CardSubtitle, CardBody } from "@/components/ui/Card";
-import { StatTile } from "@/components/ui/StatTile";
-import { StatusPill } from "@/components/ui/StatusPill";
-import { Avatar } from "@/components/ui/Avatar";
-import { Button } from "@/components/ui/Button";
-import { EmptyState } from "@/components/ui/EmptyState";
-import { FilterBar } from "@/components/ui/FilterBar";
+import { createClient } from "@hamza/shared/supabase/client";
+import { Card, CardHeader, CardTitle, CardSubtitle, CardBody } from "@hamza/shared/ui/Card";
+import { StatTile } from "@hamza/shared/ui/StatTile";
+import { StatusPill } from "@hamza/shared/ui/StatusPill";
+import { Avatar } from "@hamza/shared/ui/Avatar";
+import { Button } from "@hamza/shared/ui/Button";
+import { EmptyState } from "@hamza/shared/ui/EmptyState";
+import { FilterBar } from "@hamza/shared/ui/FilterBar";
 import { AreaTrend, BarTrend, DonutChart } from "@/components/charts";
-import { formatPKR, formatNumber } from "@/lib/utils";
+import { formatPKR, formatNumber } from "@hamza/shared/utils";
 import type { DashboardData } from "./queries";
 
 export function DashboardClient({ data }: { data: DashboardData }) {

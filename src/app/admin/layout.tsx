@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@hamza/shared/supabase/server";
 import { AppShell } from "@/components/layout/AppShell";
 import type { Role } from "@/components/layout/nav";
 

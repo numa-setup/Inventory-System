@@ -6,9 +6,9 @@ import Link from "next/link";
 import { Loader2, Truck, Smartphone, Tag } from "lucide-react";
 import { useCart } from "./CartProvider";
 import { ProductMedia } from "./ProductMedia";
-import { formatPKR } from "@/lib/utils";
+import { formatPKR } from "@hamza/shared/utils";
 import { placeOrder } from "@/features/storefront/order-actions";
-import { computePromotions, type Promotion } from "@/lib/discounts";
+import { computePromotions, type Promotion } from "@hamza/shared/discounts";
 import type { DeliveryConfig } from "@/lib/storefront";
 
 export function CheckoutForm({ config, promotions = [] }: { config: DeliveryConfig; promotions?: Promotion[] }) {

@@ -5,12 +5,12 @@ import {
   Banknote, NotebookPen, Smartphone,
   X, Plus, Trash2, Loader2, Check,
 } from "lucide-react";
-import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
-import { Select } from "@/components/ui/Select";
+import { Button } from "@hamza/shared/ui/Button";
+import { Input } from "@hamza/shared/ui/Input";
+import { Select } from "@hamza/shared/ui/Select";
 import { CustomerSelect } from "./CustomerSelect";
-import { useToast } from "@/components/ui/Toast";
-import { cn, formatPKR } from "@/lib/utils";
+import { useToast } from "@hamza/shared/ui/Toast";
+import { cn, formatPKR } from "@hamza/shared/utils";
 import { quickAddCustomer, type PayMethod, type PaymentInput } from "./actions";
 
 const METHODS: { m: PayMethod; label: string; Icon: typeof Banknote }[] = [

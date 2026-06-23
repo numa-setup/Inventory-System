@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useState } from "react";
 import { CheckCircle2, XCircle, Info, X } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn } from "../utils";
 
 type ToastKind = "success" | "error" | "info";
 interface Toast {

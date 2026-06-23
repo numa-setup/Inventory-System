@@ -1,6 +1,6 @@
-import { createAdminClient } from "@/lib/supabase/admin";
-import { productSalePrice, type Promotion } from "@/lib/discounts";
-import { PROMO_SELECT, mapPromotion } from "@/features/discounts/promotions";
+import { createAdminClient } from "@hamza/shared/supabase/admin";
+import { productSalePrice, type Promotion } from "@hamza/shared/discounts";
+import { PROMO_SELECT, mapPromotion } from "@hamza/shared/promotions";
 
 // Server-side data for the public storefront. Reads only published, public
 // catalogue data via the service client (it never reaches the browser).

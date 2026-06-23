@@ -1,9 +1,9 @@
-import type { createClient } from "@/lib/supabase/server";
-import type { Accent } from "@/components/ui/accent";
-import type { DimensionFilter } from "@/components/ui/FilterBar";
+import type { createClient } from "@hamza/shared/supabase/server";
+import type { Accent } from "@hamza/shared/ui/accent";
+import type { DimensionFilter } from "@hamza/shared/ui/FilterBar";
 import { getVariantOptions } from "@/lib/catalog";
-import { formatPKR, formatNumber } from "@/lib/utils";
-import { bucketKey, bucketOf, type DateRange } from "@/lib/dates";
+import { formatPKR, formatNumber } from "@hamza/shared/utils";
+import { bucketKey, bucketOf, type DateRange } from "@hamza/shared/dates";
 import { format } from "date-fns";
 
 type Supabase = Awaited<ReturnType<typeof createClient>>;

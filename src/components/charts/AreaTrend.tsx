@@ -8,7 +8,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { ACCENT_HEX, type Accent } from "@/components/ui/accent";
+import { ACCENT_HEX, type Accent } from "@hamza/shared/ui/accent";
 
 /** Gradient-filled area chart, as in the dashboard references. */
 export function AreaTrend({

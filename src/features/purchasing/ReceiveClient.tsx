@@ -7,21 +7,21 @@ import {
   Loader2, Trash2, ArrowLeft, PackageCheck, ClipboardList, Camera,
   CheckCircle2, AlertTriangle, ScanLine, Link2, X,
 } from "lucide-react";
-import { PageHeader } from "@/components/ui/PageHeader";
-import { Card } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
-import { Input, Label } from "@/components/ui/Input";
-import { Select } from "@/components/ui/Select";
-import { EmptyState } from "@/components/ui/EmptyState";
-import { useToast } from "@/components/ui/Toast";
-import { VariantSearch, type VariantSearchItem } from "@/components/ui/VariantSearch";
+import { PageHeader } from "@hamza/shared/ui/PageHeader";
+import { Card } from "@hamza/shared/ui/Card";
+import { Button } from "@hamza/shared/ui/Button";
+import { Input, Label } from "@hamza/shared/ui/Input";
+import { Select } from "@hamza/shared/ui/Select";
+import { EmptyState } from "@hamza/shared/ui/EmptyState";
+import { useToast } from "@hamza/shared/ui/Toast";
+import { VariantSearch, type VariantSearchItem } from "@hamza/shared/ui/VariantSearch";
 import { CameraScanner } from "@/components/scan/CameraScannerLazy";
 import { useCatalog } from "@/lib/useCatalog";
 import { ensureCatalog, lookupByBarcode, type CatalogItem } from "@/lib/catalog-cache";
 import { useScanHandler } from "@/components/scan/ScanProvider";
 import { parseScan } from "@/lib/barcode";
 import { beepOk, beepError } from "@/lib/sound";
-import { cn, formatPKR } from "@/lib/utils";
+import { cn, formatPKR } from "@hamza/shared/utils";
 import { receiveStock, linkBarcode } from "./actions";
 
 function toVS(it: CatalogItem): VariantSearchItem {

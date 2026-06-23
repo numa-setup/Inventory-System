@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { Minus, Plus, Check } from "lucide-react";
 import { useCart } from "./CartProvider";
-import { formatPKR } from "@/lib/utils";
+import { formatPKR } from "@hamza/shared/utils";
 import type { StoreProduct, StoreVariant } from "@/lib/storefront";
 
 export function AddToBag({ product, variants }: { product: StoreProduct; variants: StoreVariant[] }) {

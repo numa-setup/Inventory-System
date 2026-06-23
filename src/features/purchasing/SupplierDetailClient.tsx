@@ -7,17 +7,17 @@ import {
   ArrowLeft, Building2, Phone, Mail, MapPin, CreditCard, FileText, Wallet,
   Loader2, Receipt, Package, Pencil,
 } from "lucide-react";
-import { PageHeader } from "@/components/ui/PageHeader";
-import { Card } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
-import { Input, Label, FieldError } from "@/components/ui/Input";
-import { Drawer } from "@/components/ui/Drawer";
-import { DataTable, type Column } from "@/components/ui/DataTable";
-import { StatTile } from "@/components/ui/StatTile";
-import { StatusPill } from "@/components/ui/StatusPill";
-import { EmptyState } from "@/components/ui/EmptyState";
-import { useToast } from "@/components/ui/Toast";
-import { formatPKR } from "@/lib/utils";
+import { PageHeader } from "@hamza/shared/ui/PageHeader";
+import { Card } from "@hamza/shared/ui/Card";
+import { Button } from "@hamza/shared/ui/Button";
+import { Input, Label, FieldError } from "@hamza/shared/ui/Input";
+import { Drawer } from "@hamza/shared/ui/Drawer";
+import { DataTable, type Column } from "@hamza/shared/ui/DataTable";
+import { StatTile } from "@hamza/shared/ui/StatTile";
+import { StatusPill } from "@hamza/shared/ui/StatusPill";
+import { EmptyState } from "@hamza/shared/ui/EmptyState";
+import { useToast } from "@hamza/shared/ui/Toast";
+import { formatPKR } from "@hamza/shared/utils";
 import { recordSupplierPayment, updateSupplier, type SupplierInput } from "./actions";
 
 interface Supplier {

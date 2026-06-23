@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@hamza/shared/supabase/server";
 import { CategoriesClient, type CategoryNode } from "@/features/categories/CategoriesClient";
 
 export const metadata: Metadata = { title: "Categories" };

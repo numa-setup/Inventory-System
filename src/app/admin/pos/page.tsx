@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import { createClient } from "@/lib/supabase/server";
-import { getCurrentUser } from "@/lib/auth";
+import { createClient } from "@hamza/shared/supabase/server";
+import { getCurrentUser } from "@hamza/shared/auth";
 import { PosClient, type PosProduct, type StoreSettings } from "@/features/pos/PosClient";
-import { PROMO_SELECT, mapPromotion } from "@/features/discounts/promotions";
+import { PROMO_SELECT, mapPromotion } from "@hamza/shared/promotions";
 
 export const metadata: Metadata = { title: "POS Billing" };
 

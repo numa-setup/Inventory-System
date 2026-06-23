@@ -4,7 +4,7 @@ import Link from "next/link";
 import { X, Minus, Plus, ShoppingBag } from "lucide-react";
 import { useCart } from "./CartProvider";
 import { ProductMedia } from "./ProductMedia";
-import { formatPKR } from "@/lib/utils";
+import { formatPKR } from "@hamza/shared/utils";
 
 export function CartDrawer() {
   const { items, subtotal, open, setOpen, setQty, remove } = useCart();

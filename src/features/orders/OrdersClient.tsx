@@ -3,13 +3,13 @@
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Phone, MapPin, Loader2, Check, X } from "lucide-react";
-import { Card } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
-import { Drawer } from "@/components/ui/Drawer";
-import { StatusPill } from "@/components/ui/StatusPill";
-import { Avatar } from "@/components/ui/Avatar";
-import { useToast } from "@/components/ui/Toast";
-import { formatPKR } from "@/lib/utils";
+import { Card } from "@hamza/shared/ui/Card";
+import { Button } from "@hamza/shared/ui/Button";
+import { Drawer } from "@hamza/shared/ui/Drawer";
+import { StatusPill } from "@hamza/shared/ui/StatusPill";
+import { Avatar } from "@hamza/shared/ui/Avatar";
+import { useToast } from "@hamza/shared/ui/Toast";
+import { formatPKR } from "@hamza/shared/utils";
 import { updateOrderStatus } from "./actions";
 
 export interface OrderFull {

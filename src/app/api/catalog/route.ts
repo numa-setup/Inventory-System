@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@hamza/shared/supabase/server";
 
 // The lightweight catalogue index: one row per sellable variant with name,
 // option label, primary barcode, price, cost and live stock. The client caches

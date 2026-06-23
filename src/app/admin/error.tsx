@@ -2,8 +2,8 @@
 
 import { useEffect } from "react";
 import { AlertTriangle, RotateCcw } from "lucide-react";
-import { Button } from "@/components/ui/Button";
-import { logError } from "@/lib/log";
+import { Button } from "@hamza/shared/ui/Button";
+import { logError } from "@hamza/shared/log";
 
 // Route-level error boundary for every admin screen: a friendly message + retry
 // instead of a crash. Errors are reported through the central log sink.

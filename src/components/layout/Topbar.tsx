@@ -1,11 +1,11 @@
 "use client";
 
 import { Menu, Moon, ScanLine, Sun } from "lucide-react";
-import { useTheme } from "@/components/theme/ThemeProvider";
+import { useTheme } from "@hamza/shared/theme/ThemeProvider";
 import { useScan } from "@/components/scan/ScanProvider";
 import { GlobalSearch } from "./GlobalSearch";
 import { NotificationsBell } from "./NotificationsBell";
-import { Avatar } from "@/components/ui/Avatar";
+import { Avatar } from "@hamza/shared/ui/Avatar";
 
 export function Topbar({
   onMenu,

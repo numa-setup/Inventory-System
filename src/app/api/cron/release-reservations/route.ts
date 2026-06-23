@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createAdminClient } from "@hamza/shared/supabase/admin";
 
 // Release stock held by abandoned web orders. Runs automatically via pg_cron
 // every 15 min; this route lets an external scheduler (or a manual call) trigger

@@ -6,18 +6,18 @@ import {
   Loader2, Store, Users, ShieldCheck, Boxes, Receipt, Plug, Palette, Database,
   Plus, KeyRound, Moon, Sun, Upload, Download,
 } from "lucide-react";
-import { PageHeader } from "@/components/ui/PageHeader";
-import { Card, CardHeader, CardTitle, CardBody } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
-import { Input, Label, FieldError } from "@/components/ui/Input";
-import { Select } from "@/components/ui/Select";
-import { Drawer } from "@/components/ui/Drawer";
-import { DataTable, type Column } from "@/components/ui/DataTable";
-import { StatusPill } from "@/components/ui/StatusPill";
-import { Avatar } from "@/components/ui/Avatar";
-import { useToast } from "@/components/ui/Toast";
-import { useTheme } from "@/components/theme/ThemeProvider";
-import { cn } from "@/lib/utils";
+import { PageHeader } from "@hamza/shared/ui/PageHeader";
+import { Card, CardHeader, CardTitle, CardBody } from "@hamza/shared/ui/Card";
+import { Button } from "@hamza/shared/ui/Button";
+import { Input, Label, FieldError } from "@hamza/shared/ui/Input";
+import { Select } from "@hamza/shared/ui/Select";
+import { Drawer } from "@hamza/shared/ui/Drawer";
+import { DataTable, type Column } from "@hamza/shared/ui/DataTable";
+import { StatusPill } from "@hamza/shared/ui/StatusPill";
+import { Avatar } from "@hamza/shared/ui/Avatar";
+import { useToast } from "@hamza/shared/ui/Toast";
+import { useTheme } from "@hamza/shared/theme/ThemeProvider";
+import { cn } from "@hamza/shared/utils";
 import {
   updateStoreProfile, updateInventorySettings, updateSalesSettings, updateIntegrations,
   inviteUser, updateUserRole, setUserActive, resetUserPassword, changePassword,

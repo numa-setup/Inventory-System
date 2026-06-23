@@ -2,9 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient as createSupabaseJs } from "@supabase/supabase-js";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { createClient } from "@/lib/supabase/server";
-import { getCurrentUser } from "@/lib/auth";
+import { createAdminClient } from "@hamza/shared/supabase/admin";
+import { createClient } from "@hamza/shared/supabase/server";
+import { getCurrentUser } from "@hamza/shared/auth";
 
 async function requireOwner() {
   const user = await getCurrentUser();

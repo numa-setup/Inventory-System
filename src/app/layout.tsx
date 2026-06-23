@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, Plus_Jakarta_Sans, Cormorant_Garamond } from "next/font/google";
 import { Providers } from "./providers";
-import { themeScript } from "@/components/theme/ThemeProvider";
+import { themeScript } from "@hamza/shared/theme/ThemeProvider";
 import "./globals.css";
 
 const jakarta = Plus_Jakarta_Sans({

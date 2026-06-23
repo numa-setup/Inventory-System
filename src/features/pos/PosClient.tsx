@@ -7,12 +7,12 @@ import {
   Loader2, Package, ScanLine, Camera, CheckCircle2, AlertTriangle, RotateCcw,
   Keyboard, Pause, Clock, Play, WifiOff, RefreshCw, Tag,
 } from "lucide-react";
-import { Input } from "@/components/ui/Input";
+import { Input } from "@hamza/shared/ui/Input";
 import { CustomerSelect } from "./CustomerSelect";
-import { Button } from "@/components/ui/Button";
-import { StatusPill } from "@/components/ui/StatusPill";
-import { useToast } from "@/components/ui/Toast";
-import { cn, formatPKR } from "@/lib/utils";
+import { Button } from "@hamza/shared/ui/Button";
+import { StatusPill } from "@hamza/shared/ui/StatusPill";
+import { useToast } from "@hamza/shared/ui/Toast";
+import { cn, formatPKR } from "@hamza/shared/utils";
 import { useCatalog } from "@/lib/useCatalog";
 import { ensureCatalog, type CatalogItem } from "@/lib/catalog-cache";
 import { useScanHandler } from "@/components/scan/ScanProvider";
@@ -24,8 +24,8 @@ import { Receipt } from "./Receipt";
 import { ReturnsSheet } from "./ReturnsSheet";
 import { checkoutSale, quickAddCustomer, type PaymentInput } from "./actions";
 import { enqueueSale, getQueue, removeFromQueue, queueCount, type QueuedSalePayload } from "@/lib/pos-queue";
-import { computeTotals, unitDiscount, round2 as round2px } from "@/lib/pricing";
-import { computePromotions, type Promotion, type PromoResult } from "@/lib/discounts";
+import { computeTotals, unitDiscount, round2 as round2px } from "@hamza/shared/pricing";
+import { computePromotions, type Promotion, type PromoResult } from "@hamza/shared/discounts";
 import { type ReceiptData } from "@/lib/receipt";
 import { openReceiptPdf } from "@/lib/receipt-pdf";
 

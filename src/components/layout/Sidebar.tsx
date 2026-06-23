@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Store, X } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn } from "@hamza/shared/utils";
 import { navForRole, type Role } from "./nav";
 
 export function Sidebar({

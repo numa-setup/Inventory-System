@@ -2,13 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { Barcode, Loader2, Printer, Wand2 } from "lucide-react";
-import { Drawer } from "@/components/ui/Drawer";
-import { Button } from "@/components/ui/Button";
-import { Input, Label } from "@/components/ui/Input";
-import { useToast } from "@/components/ui/Toast";
+import { Drawer } from "@hamza/shared/ui/Drawer";
+import { Button } from "@hamza/shared/ui/Button";
+import { Input, Label } from "@hamza/shared/ui/Input";
+import { useToast } from "@hamza/shared/ui/Toast";
 import { code128Svg } from "@/lib/barcode";
 import { ensureCatalog } from "@/lib/catalog-cache";
-import { formatPKR } from "@/lib/utils";
+import { formatPKR } from "@hamza/shared/utils";
 import { assignInternalBarcode } from "./actions";
 
 export interface LabelTarget {

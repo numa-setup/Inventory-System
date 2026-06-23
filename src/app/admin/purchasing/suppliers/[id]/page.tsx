@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@hamza/shared/supabase/server";
 import { getVariantOptions } from "@/lib/catalog";
 import { SupplierDetailClient } from "@/features/purchasing/SupplierDetailClient";
 

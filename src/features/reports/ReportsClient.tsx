@@ -3,16 +3,16 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { BarChart3 } from "lucide-react";
-import { PageHeader } from "@/components/ui/PageHeader";
-import { Card, CardHeader, CardTitle } from "@/components/ui/Card";
-import { StatTile } from "@/components/ui/StatTile";
-import { DataTable, type Column } from "@/components/ui/DataTable";
-import { StatusPill } from "@/components/ui/StatusPill";
-import { EmptyState } from "@/components/ui/EmptyState";
-import { FilterBar } from "@/components/ui/FilterBar";
-import { ExportMenu } from "@/components/ui/ExportMenu";
+import { PageHeader } from "@hamza/shared/ui/PageHeader";
+import { Card, CardHeader, CardTitle } from "@hamza/shared/ui/Card";
+import { StatTile } from "@hamza/shared/ui/StatTile";
+import { DataTable, type Column } from "@hamza/shared/ui/DataTable";
+import { StatusPill } from "@hamza/shared/ui/StatusPill";
+import { EmptyState } from "@hamza/shared/ui/EmptyState";
+import { FilterBar } from "@hamza/shared/ui/FilterBar";
+import { ExportMenu } from "@hamza/shared/ui/ExportMenu";
 import { AreaTrend, BarTrend, DonutChart } from "@/components/charts";
-import { formatPKR, formatNumber, cn } from "@/lib/utils";
+import { formatPKR, formatNumber, cn } from "@hamza/shared/utils";
 import { REPORTS, type ReportData, type ReportColumn, type ReportChart } from "./queries";
 
 function fmt(kind: ReportColumn["kind"], v: unknown) {
