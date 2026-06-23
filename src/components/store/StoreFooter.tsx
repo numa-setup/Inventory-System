@@ -41,7 +41,12 @@ export function StoreFooter({ info, categories }: { info: StoreInfo; categories:
 
         <div className="mt-14 flex flex-col items-center justify-between gap-2 border-t border-store-line pt-6 text-xs text-store-muted sm:flex-row">
           <span>© {new Date().getFullYear()} {info.name}. All rights reserved.</span>
-          <Link href="/login" className="transition-colors hover:text-store-charcoal">Staff login</Link>
+          <a
+            href={`${process.env.NEXT_PUBLIC_ADMIN_URL ?? ""}/login`}
+            className="transition-colors hover:text-store-charcoal"
+          >
+            Staff login
+          </a>
         </div>
       </div>
     </footer>
