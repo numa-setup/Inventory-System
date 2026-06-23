@@ -16,7 +16,7 @@ const REFUND_METHODS: { m: PayMethod; label: string }[] = [
   { m: "JAZZCASH", label: "JazzCash" }, { m: "UDHAAR", label: "Adjust khata" },
 ];
 
-export function ReturnsSheet({ open, onClose, initialReceipt }: { open: boolean; onClose: () => void; initialReceipt?: string }) {
+export function ReturnsSheet({ open, onClose, initialReceipt, onProcessed }: { open: boolean; onClose: () => void; initialReceipt?: string; onProcessed?: (saleId: string) => void }) {
   const toast = useToast();
   const [receiptNo, setReceiptNo] = useState("");
   const [sale, setSale] = useState<SaleForReturn | null>(null);
@@ -82,6 +82,7 @@ export function ReturnsSheet({ open, onClose, initialReceipt }: { open: boolean;
     if (res && "error" in res && res.error) return toast(res.error, "error");
     toast(`Refund ${formatPKR(refundTotal)} · stock returned`);
     void ensureCatalog({ force: true });
+    onProcessed?.(sale.sale_id);
     close();
   }
 

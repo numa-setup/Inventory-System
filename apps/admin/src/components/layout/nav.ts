@@ -10,6 +10,7 @@ import {
   FolderTree,
   ClipboardList,
   BarChart3,
+  ReceiptText,
   Settings,
   type LucideIcon,
 } from "lucide-react";
@@ -30,6 +31,7 @@ export interface NavItem {
 export const NAV: NavItem[] = [
   { label: "Dashboard", href: "/admin/dashboard", icon: LayoutDashboard, roles: ["owner", "manager"] },
   { label: "POS Billing", href: "/admin/pos", icon: ShoppingCart },
+  { label: "Sales", href: "/admin/sales", icon: ReceiptText },
   { label: "Products", href: "/admin/products", icon: Package },
   { label: "Categories", href: "/admin/categories", icon: FolderTree, roles: ["owner", "manager"] },
   { label: "Stock", href: "/admin/stock", icon: Boxes, roles: ["owner", "manager"] },

@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { Loader2 } from "lucide-react";
 import { Button } from "./Button";
 import { cn } from "../utils";
@@ -34,6 +35,12 @@ export function ConfirmDialog({
   loading?: boolean;
   icon?: React.ReactNode;
 }) {
+  // Portal to <body> so the modal escapes any ancestor that creates a
+  // containing block for fixed positioning (e.g. the header's backdrop-blur),
+  // which would otherwise pin/clip it to the top of the screen.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
   useEffect(() => {
     if (!open) return;
     function onKey(e: KeyboardEvent) {
@@ -43,10 +50,10 @@ export function ConfirmDialog({
     return () => document.removeEventListener("keydown", onKey);
   }, [open, loading, onCancel]);
 
-  if (!open) return null;
+  if (!open || !mounted) return null;
 
-  return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       <div
         className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-fade-in"
         onClick={() => !loading && onCancel()}
@@ -80,6 +87,7 @@ export function ConfirmDialog({
           </Button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

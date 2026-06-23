@@ -75,9 +75,9 @@ export function Topbar({
         {/* Notifications */}
         <NotificationsBell unread={unreadCount} />
 
-        {/* Profile */}
-        <div className="ml-1 flex items-center gap-2.5 rounded-lg py-1 pl-1 pr-2">
-          <Avatar name={userName} size={34} />
+        {/* Profile + sign out — one cohesive cluster */}
+        <div className="ml-1.5 flex items-center gap-1.5 rounded-full border border-border bg-surface-2/60 py-1 pl-1 pr-1 sm:pl-1.5">
+          <Avatar name={userName} size={32} />
           <div className="hidden text-left leading-tight sm:block">
             <div className="text-sm font-semibold text-text-primary">
               {userName}
@@ -86,17 +86,17 @@ export function Topbar({
               {roleLabel}
             </div>
           </div>
-        </div>
 
-        {/* Sign out (asks for confirmation first) */}
-        <button
-          onClick={() => setConfirmOut(true)}
-          className="rounded-lg p-2 text-text-secondary hover:bg-surface-2 hover:text-coral-text"
-          aria-label="Sign out"
-          title="Sign out"
-        >
-          <LogOut className="h-5 w-5" />
-        </button>
+          {/* Sign out (asks for confirmation first) */}
+          <button
+            onClick={() => setConfirmOut(true)}
+            className="group flex h-8 w-8 items-center justify-center rounded-full text-text-tertiary transition-colors hover:bg-coral-tile hover:text-coral-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-coral-icon/40 sm:ml-0.5"
+            aria-label="Log out"
+            title="Log out"
+          >
+            <LogOut className="h-[17px] w-[17px] transition-transform group-hover:translate-x-0.5" />
+          </button>
+        </div>
       </div>
 
       <ConfirmDialog

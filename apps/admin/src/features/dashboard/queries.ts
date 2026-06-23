@@ -23,7 +23,7 @@ export interface DashboardData {
 export async function buildDashboard(supabase: Supabase, range: DateRange): Promise<DashboardData> {
   // These reads are all independent — run getVariantOptions, categories and the
   // five range queries in a SINGLE parallel batch (was 3 sequential round-trips).
-  const [variants, { data: catRows }, { data: sales }, { data: orders }, { data: avail }, { data: customers }, { data: suppliers }] = await Promise.all([
+  const [variants, { data: catRows }, { data: sales }, { data: orders }, { data: avail }, { data: customers }, { data: suppliers }, { data: returnsRaw }] = await Promise.all([
     getVariantOptions(supabase),
     supabase.from("categories").select("id, name"),
     supabase.from("sales").select("id, total, profit, created_at").gte("created_at", iso(range.from)).lte("created_at", iso(range.to)),
@@ -31,22 +31,39 @@ export async function buildDashboard(supabase: Supabase, range: DateRange): Prom
     supabase.from("variant_availability").select("variant_id, on_hand, available"),
     supabase.from("customers").select("id, name, credit_balance"),
     supabase.from("suppliers").select("id, name, balance"),
+    supabase.from("sale_returns").select("id, created_at").gte("created_at", iso(range.from)).lte("created_at", iso(range.to)),
   ]);
   const vMap = new Map(variants.map((v) => [v.variant_id, v]));
   const catName = new Map<string, string>();
   for (const c of catRows ?? []) catName.set(c.id, c.name);
 
   const saleIds = (sales ?? []).map((s) => s.id);
-  const [{ data: items }, { data: pays }] = await Promise.all([
+  const retIds = (returnsRaw ?? []).map((r) => r.id);
+  const [{ data: items }, { data: pays }, { data: retItems }] = await Promise.all([
     saleIds.length ? supabase.from("sale_items").select("sale_id, variant_id, qty, line_total").in("sale_id", saleIds) : Promise.resolve({ data: [] as Record<string, unknown>[] }),
     // All payments in range — both in-store (sale_id) and online-store (order_id),
     // so the "Online" segment captures online payments from either channel.
     supabase.from("payments").select("method, amount, order_id").gte("created_at", iso(range.from)).lte("created_at", iso(range.to)),
+    retIds.length ? supabase.from("sale_return_items").select("return_id, qty, line_total, unit_cogs").in("return_id", retIds) : Promise.resolve({ data: [] as Record<string, unknown>[] }),
   ]);
 
-  // KPIs
-  const totalSales = (sales ?? []).reduce((s, x) => s + Number(x.total), 0);
-  const totalProfit = (sales ?? []).reduce((s, x) => s + Number(x.profit), 0);
+  // Returns net out of sales/profit (a return is not a sale). Attributed to the
+  // return's own date for the trend.
+  const retDate = new Map((returnsRaw ?? []).map((r) => [r.id as string, r.created_at as string]));
+  const retByDate = new Map<string, { revenue: number; profit: number }>();
+  let retRevenue = 0, retProfit = 0;
+  for (const ri of retItems ?? []) {
+    const rev = Number(ri.line_total); const prof = rev - Number(ri.qty) * Number(ri.unit_cogs);
+    retRevenue += rev; retProfit += prof;
+    const d = retDate.get(ri.return_id as string) ?? iso(range.from);
+    const k = bucketKey(new Date(d), bucketOf(range));
+    const cur = retByDate.get(k) ?? { revenue: 0, profit: 0 };
+    cur.revenue += rev; cur.profit += prof; retByDate.set(k, cur);
+  }
+
+  // KPIs (net of returns)
+  const totalSales = (sales ?? []).reduce((s, x) => s + Number(x.total), 0) - retRevenue;
+  const totalProfit = (sales ?? []).reduce((s, x) => s + Number(x.profit), 0) - retProfit;
   const ordersInRange = (orders ?? []).filter((o) => o.created_at >= iso(range.from) && o.created_at <= iso(range.to)).length;
   const availMap = new Map((avail ?? []).map((a) => [a.variant_id, a]));
   const stockValue = (avail ?? []).reduce((s, a) => { const v = vMap.get(a.variant_id); return s + Number(a.on_hand) * (v?.cost ?? 0); }, 0);
@@ -59,6 +76,11 @@ export async function buildDashboard(supabase: Supabase, range: DateRange): Prom
     const k = bucketKey(new Date(s.created_at), b);
     const cur = trendMap.get(k) ?? { label: k, sales: 0, profit: 0 };
     cur.sales += Number(s.total); cur.profit += Number(s.profit);
+    trendMap.set(k, cur);
+  }
+  for (const [k, rv] of retByDate) {
+    const cur = trendMap.get(k) ?? { label: k, sales: 0, profit: 0 };
+    cur.sales -= rv.revenue; cur.profit -= rv.profit;
     trendMap.set(k, cur);
   }
 
