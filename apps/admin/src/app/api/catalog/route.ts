@@ -6,6 +6,8 @@ import { createClient } from "@hamza/shared/supabase/server";
 // this (in-memory + IndexedDB) so scans and search resolve instantly and keep
 // working through brief network drops — see src/lib/catalog-cache.ts.
 export const dynamic = "force-dynamic";
+// Run on the Workers Edge runtime for Cloudflare Pages (next-on-pages).
+export const runtime = "edge";
 
 export async function GET() {
   const supabase = await createClient();

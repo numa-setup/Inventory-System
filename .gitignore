@@ -15,6 +15,11 @@ next-env.d.ts
 /apps/*/out/
 /packages/*/dist/
 
+# Cloudflare Pages / next-on-pages build artifacts (apps/admin)
+/apps/*/.vercel/
+/apps/*/.wrangler/
+/apps/*/.dev.vars
+
 # production
 /build
 
