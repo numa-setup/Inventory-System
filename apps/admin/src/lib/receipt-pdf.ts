@@ -109,7 +109,11 @@ function vline(ctx: Ctx, x: number, y1: number, y2: number, thickness = 0.6) {
  */
 export async function buildReceiptPdf(d: ReceiptData): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
-  const reg = await doc.embedFont(StandardFonts.Courier);
+  // Courier's regular cut prints faint on thermal; use the bold cut for body text
+  // too. Courier and CourierBold share identical fixed-pitch metrics, so every
+  // width/centering calculation — and the whole layout — is unchanged; only the
+  // stroke weight darkens for crisp, legible output (parity with the print HTML).
+  const reg = await doc.embedFont(StandardFonts.CourierBold);
   const bold = await doc.embedFont(StandardFonts.CourierBold);
   const logo = await loadLogo(doc, d.store.logo_url);
 

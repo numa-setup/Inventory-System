@@ -60,7 +60,11 @@ export function receiptHtml(d: ReceiptData): string {
   /* Fix the printed page to the roll width; height follows the content. */
   @page { size: ${RECEIPT_WIDTH_MM}mm auto; margin: 0; }
   * { box-sizing: border-box; }
-  html, body { margin: 0; padding: 0; background: #fff; }
+  html, body {
+    margin: 0; padding: 0; background: #fff; color: #000;
+    /* Stop the browser lightening near-black ink when printing to thermal. */
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
   /* The receipt is the only flow content — no A4 / full-page-height wrapper. */
   .receipt {
     width: ${RECEIPT_WIDTH_MM}mm;
@@ -69,6 +73,10 @@ export function receiptHtml(d: ReceiptData): string {
     color: #000;
     font-size: 8pt;
     line-height: 1.25;
+    /* Thermal heads render thin strokes faint — bold the whole receipt so every
+       line prints crisp and dark. Size (not weight) carries the hierarchy. */
+    font-weight: 700;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
   }
   .center { text-align: center; }
   .r { text-align: right; }
