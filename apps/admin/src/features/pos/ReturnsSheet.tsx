@@ -7,6 +7,7 @@ import { Input } from "@hamza/shared/ui/Input";
 import { Select } from "@hamza/shared/ui/Select";
 import { useToast } from "@hamza/shared/ui/Toast";
 import { cn, formatPKR } from "@hamza/shared/utils";
+import { round2 } from "@hamza/shared/pricing";
 import { ensureCatalog } from "@/lib/catalog-cache";
 import { getSaleForReturn, processReturn, type SaleForReturn } from "./returns";
 import type { PayMethod } from "./actions";
@@ -59,8 +60,9 @@ export function ReturnsSheet({ open, onClose, initialReceipt, onProcessed }: { o
     });
   }
 
+  // Refund the net amount actually paid (after discounts), not the list price.
   const refundTotal = sale
-    ? sale.items.reduce((s, it) => s + (qtys.get(it.sale_item_id) ?? 0) * it.unit_price, 0)
+    ? round2(sale.items.reduce((s, it) => s + round2((qtys.get(it.sale_item_id) ?? 0) * it.refund_unit), 0))
     : 0;
 
   async function submit() {

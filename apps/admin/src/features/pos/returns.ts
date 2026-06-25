@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@hamza/shared/supabase/admin";
 import { getCurrentUser } from "@hamza/shared/auth";
 import { returnSchema, firstIssue } from "@hamza/shared/validation";
+import { netUnitPaid } from "@hamza/shared/pricing";
 import type { PayMethod } from "./actions";
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -19,6 +20,9 @@ export interface ReturnableItem {
   remaining: number;
   unit_price: number;
   unit_cogs: number;
+  /** Net amount actually paid per unit (after line + proportional bill discount
+   *  and tax) — the correct refund basis, NOT the pre-discount unit_price. */
+  refund_unit: number;
 }
 
 export interface SaleForReturn {
@@ -38,13 +42,19 @@ export async function getSaleForReturn(receiptNo: string): Promise<SaleForReturn
   const db = createAdminClient();
 
   const { data: sale } = await db
-    .from("sales").select("id, receipt_no, created_at, customer_id")
+    .from("sales").select("id, receipt_no, created_at, customer_id, total")
     .eq("receipt_no", receiptNo.trim()).maybeSingle();
   if (!sale) return { error: "No sale found with that receipt number." };
 
   const { data: items } = await db
-    .from("sale_items").select("id, product_id, variant_id, qty, unit_price, unit_cogs").eq("sale_id", sale.id);
+    .from("sale_items").select("id, product_id, variant_id, qty, unit_price, unit_cogs, line_total").eq("sale_id", sale.id);
   const saleItemIds = (items ?? []).map((i) => i.id);
+
+  // The actual amount paid per unit = each line's net (after its own discount)
+  // with the bill-level discount + tax spread across lines proportionally, so
+  // Σ(qty × refund_unit) == the bill total. Refunds use this, never unit_price.
+  const sumLineTotals = (items ?? []).reduce((s, i) => s + Number(i.line_total), 0);
+  const saleTotal = Number(sale.total);
 
   const { data: rets } = saleItemIds.length
     ? await db.from("sale_return_items").select("sale_item_id, qty").in("sale_item_id", saleItemIds)
@@ -71,6 +81,7 @@ export async function getSaleForReturn(receiptNo: string): Promise<SaleForReturn
       name: c?.product_name ?? "Item", label: c?.label ?? "",
       qty: Number(it.qty), returned, remaining: round2(Math.max(0, Number(it.qty) - returned)),
       unit_price: Number(it.unit_price), unit_cogs: Number(it.unit_cogs),
+      refund_unit: netUnitPaid(Number(it.line_total), Number(it.qty), sumLineTotals, saleTotal),
     };
   });
 
@@ -104,20 +115,26 @@ export async function processReturn(input: {
     .from("stock_moves").select("reference_id").eq("idempotency_key", `${input.idempotency_key}-0`).maybeSingle();
   if (dupe) return { ok: true, duplicate: true, return_id: dupe.reference_id, total: 0 };
 
-  // Validate quantities against what's still returnable.
+  // Pull the WHOLE sale (header + every line) so the refund is computed from
+  // what was actually paid — authoritative DB values, never the client payload.
+  const { data: sale } = await db.from("sales").select("created_at, customer_id, total").eq("id", input.sale_id).maybeSingle();
+  const { data: origItems } = await db
+    .from("sale_items").select("id, qty, unit_price, unit_cogs, line_total").eq("sale_id", input.sale_id);
+  const origMap = new Map((origItems ?? []).map((i) => [i.id, i]));
   const saleItemIds = picked.map((i) => i.sale_item_id);
-  const { data: origItems } = await db.from("sale_items").select("id, qty").in("id", saleItemIds);
-  const origMap = new Map((origItems ?? []).map((i) => [i.id, Number(i.qty)]));
   const { data: rets } = await db.from("sale_return_items").select("sale_item_id, qty").in("sale_item_id", saleItemIds);
   const retMap = new Map<string, number>();
   for (const r of rets ?? []) retMap.set(r.sale_item_id, (retMap.get(r.sale_item_id) ?? 0) + Number(r.qty));
+
+  // Validate quantities against what's still returnable.
   for (const it of picked) {
-    const remaining = (origMap.get(it.sale_item_id) ?? 0) - (retMap.get(it.sale_item_id) ?? 0);
+    const orig = origMap.get(it.sale_item_id);
+    if (!orig) return { error: "That line isn't part of this sale." };
+    const remaining = Number(orig.qty) - (retMap.get(it.sale_item_id) ?? 0);
     if (it.qty > remaining + 1e-6) return { error: "Return quantity exceeds what was sold." };
   }
 
   // Return window.
-  const { data: sale } = await db.from("sales").select("created_at, customer_id").eq("id", input.sale_id).maybeSingle();
   const { data: settings } = await db.from("settings").select("store_info").eq("id", 1).maybeSingle();
   const windowDays = Number((settings?.store_info as Record<string, unknown> | null)?.return_window_days ?? 7);
   if (sale && windowDays > 0) {
@@ -125,7 +142,26 @@ export async function processReturn(input: {
     if (age > windowDays) return { error: `Outside the ${windowDays}-day return window.` };
   }
 
-  const total = round2(picked.reduce((s, i) => s + i.qty * i.unit_price, 0));
+  // Refund = the net amount actually paid for each returned line: its line_total
+  // (already net of line discount) with the bill-level discount + tax spread
+  // proportionally. NEVER the pre-discount unit_price. A full return refunds
+  // exactly what that line collected, so net sales can't go negative.
+  const sumLineTotals = (origItems ?? []).reduce((s, i) => s + Number(i.line_total), 0);
+  const saleTotal = Number(sale?.total ?? 0);
+  const refundOf = (saleItemId: string, qty: number) => {
+    const orig = origMap.get(saleItemId)!;
+    return round2(qty * netUnitPaid(Number(orig.line_total), Number(orig.qty), sumLineTotals, saleTotal));
+  };
+  const lines = picked.map((i) => {
+    const orig = origMap.get(i.sale_item_id)!;
+    return {
+      ...i,
+      unit_price: Number(orig.unit_price),
+      unit_cogs: Number(orig.unit_cogs),
+      refund: refundOf(i.sale_item_id, i.qty),
+    };
+  });
+  const total = round2(lines.reduce((s, i) => s + i.refund, 0));
 
   const { data: locs } = await db.from("locations").select("id, code").in("code", ["MAIN", "CUST"]);
   const main = locs?.find((l) => l.code === "MAIN")?.id;
@@ -140,14 +176,14 @@ export async function processReturn(input: {
   const returnId = ret.id as string;
 
   await db.from("sale_return_items").insert(
-    picked.map((i) => ({
+    lines.map((i) => ({
       return_id: returnId, sale_item_id: i.sale_item_id, product_id: i.product_id, variant_id: i.variant_id,
-      qty: i.qty, unit_price: i.unit_price, unit_cogs: i.unit_cogs, line_total: round2(i.qty * i.unit_price),
+      qty: i.qty, unit_price: i.unit_price, unit_cogs: i.unit_cogs, line_total: i.refund,
     })),
   );
 
   // Reverse stock back into inventory at the original COGS (so avg cost isn't skewed).
-  const moves = picked.map((i, idx) => ({
+  const moves = lines.map((i, idx) => ({
     product_id: i.product_id, variant_id: i.variant_id, qty: i.qty,
     from_location_id: cust, to_location_id: main, unit_cost: i.unit_cogs,
     reference_type: "RETURN" as const, reference_id: returnId, source: "MANUAL" as const,

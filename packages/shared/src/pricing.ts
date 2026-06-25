@@ -52,6 +52,22 @@ export function computeTotals(lines: PriceLine[], billDiscount: number, taxPerce
   return { subtotal: round2(subtotal), discount, taxable: round2(taxable), tax, total };
 }
 
+/**
+ * Net amount actually paid per unit of a sale line — the correct basis for a
+ * refund. A line's stored `lineTotal` is already net of its OWN line discount;
+ * this additionally spreads the bill-level discount (and any tax) proportionally
+ * across lines so that Σ(qty × netUnitPaid) over every line equals the bill
+ * `saleTotal`. Returns full precision (callers round the final line/total). A
+ * line (or sale) that collected nothing refunds nothing.
+ *
+ * Refunding the pre-discount `unit_price` instead of this is the bug that made a
+ * Rs 600→550 sale refund 600 and show negative net sales.
+ */
+export function netUnitPaid(lineTotal: number, qty: number, sumLineTotals: number, saleTotal: number): number {
+  if (qty <= 0 || sumLineTotals <= 0 || saleTotal <= 0) return 0;
+  return (lineTotal / qty) * (saleTotal / sumLineTotals);
+}
+
 /** Cash change = tendered − cash applied (never negative). */
 export function changeDue(tendered: number, cashApplied: number): number {
   return Math.max(0, round2((tendered || 0) - (cashApplied || 0)));
