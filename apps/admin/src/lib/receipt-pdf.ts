@@ -254,17 +254,3 @@ export async function buildReceiptPdf(d: ReceiptData): Promise<Uint8Array> {
 
   return doc.save();
 }
-
-/**
- * Build the invoice PDF and open it in a new tab (triggering the print dialog
- * when allowed). Browser-only. Used by both the post-sale Print/Download button
- * and the F6 reprint so they show the exact same document as the WhatsApp send.
- */
-export async function openReceiptPdf(d: ReceiptData): Promise<void> {
-  const bytes = await buildReceiptPdf(d);
-  const blob = new Blob([bytes.slice() as unknown as BlobPart], { type: "application/pdf" });
-  const url = URL.createObjectURL(blob);
-  const w = window.open(url, "_blank");
-  if (w) w.addEventListener("load", () => { try { w.print(); } catch { /* ignore */ } });
-  setTimeout(() => URL.revokeObjectURL(url), 60_000);
-}

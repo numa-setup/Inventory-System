@@ -5,7 +5,8 @@ import { CheckCircle2, Printer, MessageCircle, Plus, Loader2 } from "lucide-reac
 import { Button } from "@hamza/shared/ui/Button";
 import { useToast } from "@hamza/shared/ui/Toast";
 import { type ReceiptData } from "@/lib/receipt";
-import { buildReceiptPdf, openReceiptPdf } from "@/lib/receipt-pdf";
+import { buildReceiptPdf } from "@/lib/receipt-pdf";
+import { printReceiptHtml } from "@/lib/receipt-html";
 import { normalizeWaNumber } from "@hamza/shared/notifications/whatsapp";
 import { sendReceiptWhatsApp } from "./receipt-actions";
 
@@ -48,13 +49,14 @@ export function Receipt({
     return () => { cancelled = true; if (url) URL.revokeObjectURL(url); };
   }, [data]);
 
-  async function printPdf() {
+  function printPdf() {
     if (!data) return;
     setPrinting(true);
     try {
-      await openReceiptPdf(data);
+      // Print a compact 80mm thermal receipt (HTML + @page size) — not an A4 PDF.
+      printReceiptHtml(data);
     } catch (e) {
-      toast(e instanceof Error ? e.message : "Could not build the invoice PDF", "error");
+      toast(e instanceof Error ? e.message : "Could not open the receipt for printing", "error");
     } finally {
       setPrinting(false);
     }

@@ -27,7 +27,7 @@ import { enqueueSale, getQueue, removeFromQueue, queueCount, type QueuedSalePayl
 import { computeTotals, unitDiscount, round2 as round2px } from "@hamza/shared/pricing";
 import { computePromotions, type Promotion, type PromoResult } from "@hamza/shared/discounts";
 import { type ReceiptData } from "@/lib/receipt";
-import { openReceiptPdf } from "@/lib/receipt-pdf";
+import { printReceiptHtml } from "@/lib/receipt-html";
 
 /** Cart line: qty + a per-line discount (rupees). `manual` is set once the
  *  cashier edits/removes it, so it stops tracking the product's default. */
@@ -508,7 +508,7 @@ export function PosClient({
       switch (e.key) {
         case "F2": e.preventDefault(); searchRef.current?.focus(); return;
         case "F4": e.preventDefault(); if (!anyModal && cart.size) openPayment(); return;
-        case "F6": e.preventDefault(); if (lastReceipt) void openReceiptPdf(lastReceipt); return;
+        case "F6": e.preventDefault(); if (lastReceipt) printReceiptHtml(lastReceipt); return;
         case "Escape":
           if (shortcutsOpen) return setShortcutsOpen(false);
           if (heldOpen) return setHeldOpen(false);
