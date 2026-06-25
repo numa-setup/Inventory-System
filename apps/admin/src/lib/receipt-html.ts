@@ -32,17 +32,17 @@ export function receiptHtml(d: ReceiptData): string {
     .map((it, i) => {
       const name = esc(it.name + (it.label ? ` (${it.label})` : ""));
       const qty = esc(`${it.qty} ${(it.unit || "Pcs").trim()}`.trim());
-      // When the line carries a discount, show the actual (pre-discount) unit
-      // price AND the discounted price the customer actually pays, under the name.
+      // Rate     = the actual (pre-discount) unit price.
+      // Dis Rate = the discounted unit price actually charged (Rate when no disc).
+      // Total    = Qty × Dis Rate = the net amount paid for the line.
       const lineDisc = Number(it.discount) || 0;
-      const discLine = lineDisc > 0 && it.qty > 0
-        ? `<div class="s7">Rs ${esc(NUM(it.unit_price))}-&gt;${esc(NUM(it.unit_price - lineDisc / it.qty))} ea</div>`
-        : "";
+      const disRate = it.qty > 0 ? it.unit_price - lineDisc / it.qty : it.unit_price;
       return `<tr>
         <td class="c">${i + 1}</td>
-        <td>${name}${discLine}</td>
+        <td>${name}</td>
         <td>${qty}</td>
         <td class="r">${esc(NUM(it.unit_price))}</td>
+        <td class="r">${esc(NUM(disRate))}</td>
         <td class="r">${esc(NUM(it.line_total))}</td>
       </tr>`;
     })
@@ -66,7 +66,7 @@ export function receiptHtml(d: ReceiptData): string {
   @page { size: ${RECEIPT_WIDTH_MM}mm auto; margin: 0; }
   /* Every element on the receipt is the SAME heavy bold weight + pure black — no
      thin or grey text anywhere, including the item rows and the totals. */
-  * { box-sizing: border-box; font-weight: 700; color: #000; }
+  * { box-sizing: border-box; font-weight: 700; color: #000; -webkit-text-stroke: 0.3px #000; }
   html, body {
     margin: 0; padding: 0; background: #fff; color: #000;
     width: ${RECEIPT_WIDTH_MM}mm;            /* page is the roll width; height follows content */
@@ -77,14 +77,16 @@ export function receiptHtml(d: ReceiptData): string {
      no fixed/min height or trailing space. */
   .receipt {
     width: ${RECEIPT_WIDTH_MM}mm;
-    padding: 2mm ${SIDE_PAD_MM}mm 3mm;
+    /* No top padding so the receipt starts at the very top of the roll — no
+       leading blank space above the header. */
+    padding: 0 ${SIDE_PAD_MM}mm 3mm;
     font-family: "Courier New", Courier, monospace;
     color: #000;
     font-size: 8pt;
     line-height: 1.25;
-    /* Uniform heavy weight; the faux-bold text-shadow thickens every glyph stroke
-       so the small body / table text prints as dark and heavy as the store-name
-       heading on the thermal head. It does NOT affect layout or page height. */
+    /* Uniform heavy weight; the faux-bold text-shadow + text-stroke thicken every
+       glyph so the small body / table text prints as dark and heavy as the
+       store-name heading on the thermal head. Does NOT affect layout / height. */
     font-weight: 700;
     text-shadow: 0.35px 0 0 currentColor, -0.35px 0 0 currentColor;
     -webkit-print-color-adjust: exact; print-color-adjust: exact;
@@ -102,7 +104,7 @@ export function receiptHtml(d: ReceiptData): string {
   table { width: 100%; border-collapse: collapse; font-size: 7pt; margin-top: 1mm; table-layout: fixed; }
   th, td { border: 0.4pt solid #000; padding: 0.6mm 0.8mm; vertical-align: top; word-wrap: break-word; overflow-wrap: anywhere; }
   th { font-weight: 700; }
-  col.sr { width: 6mm; } col.qty { width: 12mm; } col.rate { width: 13mm; } col.tot { width: 14mm; }
+  col.sr { width: 5mm; } col.qty { width: 10mm; } col.rate { width: 11mm; } col.dis { width: 11mm; } col.tot { width: 12mm; }
   .total { font-weight: 700; font-size: 11pt; margin-top: 1.5mm; }
   .words { font-size: 7pt; margin-top: 0.5mm; }
   .footer { font-size: 7pt; margin-top: 2mm; }
@@ -124,17 +126,17 @@ export function receiptHtml(d: ReceiptData): string {
     <div class="row"><span>Invoice No: ${esc(d.receipt_no)}</span><span>Page 1 of 1</span></div>
 
     <table>
-      <colgroup><col class="sr" /><col /><col class="qty" /><col class="rate" /><col class="tot" /></colgroup>
+      <colgroup><col class="sr" /><col /><col class="qty" /><col class="rate" /><col class="dis" /><col class="tot" /></colgroup>
       <thead>
-        <tr><th class="c">Sr</th><th>Item Name</th><th>Qty</th><th class="r">Rate</th><th class="r">Total</th></tr>
+        <tr><th class="c">Sr</th><th>Item Name</th><th>Qty</th><th class="r">Rate</th><th class="r">Dis Rate</th><th class="r">Total</th></tr>
       </thead>
       <tbody>${rows}</tbody>
     </table>
 
-    <div class="row"><span>Subtotal:</span><span>${esc(PKR(d.subtotal))}</span></div>
-    <div class="row"><span>Discount:</span><span>${d.discount > 0 ? `-${esc(PKR(d.discount))}` : esc(PKR(0))}</span></div>
+    <div class="row"><span>Total:</span><span>${esc(PKR(d.subtotal))}</span></div>
+    <div class="row"><span>Total Discount:</span><span>${d.discount > 0 ? `-${esc(PKR(d.discount))}` : esc(PKR(0))}</span></div>
     ${taxRow}
-    <div class="row total"><span>TOTAL:</span><span>${esc(PKR(d.total))}</span></div>
+    <div class="row total"><span>Net Total:</span><span>${esc(PKR(d.total))}</span></div>
     <div class="words">${esc(amountToWords(d.total))}</div>
     ${payRow}
     ${d.store.footer ? `<div class="center footer">${esc(d.store.footer)}</div>` : ""}

@@ -1,23 +1,24 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Search, Loader2, Receipt as ReceiptIcon, RotateCcw, Printer, User, CalendarClock, ChevronRight } from "lucide-react";
+import { Search, Loader2, Receipt as ReceiptIcon, RotateCcw, Printer, User, CalendarClock, ChevronRight, Trash2 } from "lucide-react";
 import { PageHeader } from "@hamza/shared/ui/PageHeader";
 import { Input } from "@hamza/shared/ui/Input";
 import { Button } from "@hamza/shared/ui/Button";
 import { Drawer } from "@hamza/shared/ui/Drawer";
 import { StatusPill } from "@hamza/shared/ui/StatusPill";
+import { ConfirmDialog } from "@hamza/shared/ui/ConfirmDialog";
 import { useToast } from "@hamza/shared/ui/Toast";
 import { formatPKR } from "@hamza/shared/utils";
 import { ReturnsSheet } from "@/features/pos/ReturnsSheet";
 import { Receipt } from "@/features/pos/Receipt";
 import type { ReceiptData } from "@/lib/receipt";
-import { getSalesPage, getSaleDetail, getSaleReceiptData, type SalesListRow, type SaleDetail } from "./actions";
+import { getSalesPage, getSaleDetail, getSaleReceiptData, deleteReturnedSale, type SalesListRow, type SaleDetail } from "./actions";
 
 const PAGE = 25;
 const fmtDate = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 
-export function SalesClient({ initial }: { initial: { rows: SalesListRow[]; hasMore: boolean } }) {
+export function SalesClient({ initial, isOwner = false }: { initial: { rows: SalesListRow[]; hasMore: boolean }; isOwner?: boolean }) {
   const toast = useToast();
   const [rows, setRows] = useState<SalesListRow[]>(initial.rows);
   const [hasMore, setHasMore] = useState(initial.hasMore);
@@ -29,6 +30,8 @@ export function SalesClient({ initial }: { initial: { rows: SalesListRow[]; hasM
   const [returnFor, setReturnFor] = useState<string | null>(null); // receipt_no
   const [receipt, setReceipt] = useState<ReceiptData | null>(null);
   const [billBusy, setBillBusy] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   // Debounced search.
   useEffect(() => {
@@ -69,6 +72,22 @@ export function SalesClient({ initial }: { initial: { rows: SalesListRow[]; hasM
     setBillBusy(false);
     if ("error" in data) return toast(data.error, "error");
     setReceipt(data);
+  }
+
+  // A fully-returned bill has nothing left to sell — every line is returned.
+  const isFullyReturned = (d: SaleDetail) =>
+    !!d.items?.length && d.refunded_total > 0 && d.items.every((it) => it.remaining <= 0);
+
+  async function removeBill(saleId: string) {
+    setDeleting(true);
+    const res = await deleteReturnedSale(saleId);
+    setDeleting(false);
+    setConfirmDelete(false);
+    if ("error" in res) return toast(res.error, "error");
+    setDetail(null);
+    const page = await getSalesPage({ search, limit: Math.max(PAGE, rows.length), offset: 0 });
+    setRows(page.rows); setHasMore(page.hasMore);
+    toast("Returned invoice permanently deleted.");
   }
 
   return (
@@ -198,10 +217,29 @@ export function SalesClient({ initial }: { initial: { rows: SalesListRow[]; hasM
                   <RotateCcw className="h-4 w-4" /> Return items
                 </Button>
               )}
+              {/* Owner-only permanent delete — only for bills returned in full. */}
+              {isOwner && isFullyReturned(detail) && (
+                <Button variant="danger" onClick={() => setConfirmDelete(true)}>
+                  <Trash2 className="h-4 w-4" /> Delete invoice
+                </Button>
+              )}
             </div>
           </div>
         ) : null}
       </Drawer>
+
+      {/* Owner-only: permanently delete a fully-returned invoice. */}
+      <ConfirmDialog
+        open={confirmDelete}
+        onCancel={() => setConfirmDelete(false)}
+        onConfirm={() => detail && removeBill(detail.id)}
+        tone="danger"
+        loading={deleting}
+        icon={<Trash2 className="h-5 w-5" />}
+        title="Delete returned invoice?"
+        message="This permanently deletes this returned invoice. Continue?"
+        confirmLabel="Delete permanently"
+      />
 
       {/* Return flow (reuses the POS return engine + UI) */}
       <ReturnsSheet

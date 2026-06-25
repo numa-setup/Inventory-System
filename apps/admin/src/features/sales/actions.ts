@@ -72,6 +72,42 @@ export async function getSalesPage(params: { search?: string; limit?: number; of
   return { rows, hasMore };
 }
 
+/**
+ * PERMANENTLY delete a FULLY-RETURNED bill (owner only). Removes the sale and its
+ * return records FK-safely; the append-only stock ledger is never mutated.
+ *
+ * Stock stays correct by construction: a fully-returned bill's SALE move (out of
+ * stock) and RETURN move (back into stock) already cancel, so on-hand is unchanged
+ * whether or not the bill rows exist. Likewise any sale/refund customer-ledger
+ * entries net to zero, so balances are untouched. We only delete business rows:
+ *   sale_returns (→ cascades sale_return_items) · discount_redemptions
+ *   · sales (→ cascades payments + sale_items)
+ * Active (un-returned / partially-returned) sales are refused.
+ */
+export async function deleteReturnedSale(saleId: string): Promise<{ ok: true } | { error: string }> {
+  const user = await getCurrentUser();
+  if (!user) return { error: "Not authorized." };
+  if (user.role !== "owner") return { error: "Only the store owner can delete a bill." };
+  const db = createAdminClient();
+
+  // Guard: never delete an active sale — the bill must be returned in full.
+  const detail = await getSaleDetail(saleId);
+  if ("error" in detail) return detail;
+  const fullyReturned = detail.items.length > 0 && detail.refunded_total > 0 && detail.items.every((it) => it.remaining <= 0);
+  if (!fullyReturned) return { error: "Only fully-returned bills can be permanently deleted." };
+
+  // FK-safe order. sale_return_items cascade from sale_returns; payments and
+  // sale_items cascade from sales. discount_redemptions has no cascade → first.
+  const ret = await db.from("sale_returns").delete().eq("sale_id", saleId);
+  if (ret.error) return { error: ret.error.message };
+  const dr = await db.from("discount_redemptions").delete().eq("sale_id", saleId);
+  if (dr.error) return { error: dr.error.message };
+  const del = await db.from("sales").delete().eq("id", saleId);
+  if (del.error) return { error: del.error.message };
+
+  return { ok: true };
+}
+
 export interface SaleDetailItem {
   sale_item_id: string;
   name: string;
