@@ -165,7 +165,8 @@ export async function buildReceiptPdf(d: ReceiptData): Promise<Uint8Array> {
   h += headerRowH;
   h += rows.reduce((a, r) => a + r.h, 0); // item rows
   h += 4; // gap after table
-  if (d.discount > 0) h += 10;
+  h += 10; // Subtotal (always shown)
+  h += 10; // Discount (always shown)
   if (d.tax > 0) h += 10;
   h += 14; // TOTAL
   h += wordsLines.length * 9 + 4; // amount in words
@@ -234,8 +235,9 @@ export async function buildReceiptPdf(d: ReceiptData): Promise<Uint8Array> {
 
   ctx.y = tableBottom - 4;
 
-  // ---- Totals ----
-  if (d.discount > 0) { ctx.y -= 10; right(ctx, `Discount: -${PKR(d.discount)}`, W - M, 8); }
+  // ---- Totals breakdown — always show Subtotal (pre-discount) then Discount ----
+  ctx.y -= 10; right(ctx, `Subtotal: ${PKR(d.subtotal)}`, W - M, 8);
+  ctx.y -= 10; right(ctx, `Discount: ${d.discount > 0 ? `-${PKR(d.discount)}` : PKR(0)}`, W - M, 8);
   if (d.tax > 0) { ctx.y -= 10; right(ctx, `Tax (${d.tax_percent}%): ${PKR(d.tax)}`, W - M, 8); }
   ctx.y -= 14;
   text(ctx, "TOTAL:", M, 11, true);

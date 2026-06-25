@@ -42,7 +42,6 @@ export function receiptHtml(d: ReceiptData): string {
     })
     .join("");
 
-  const discountRow = d.discount > 0 ? `<div class="ln r">Discount: -${esc(PKR(d.discount))}</div>` : "";
   const taxRow = d.tax > 0 ? `<div class="ln r">Tax (${esc(d.tax_percent)}%): ${esc(PKR(d.tax))}</div>` : "";
   const payRow = d.payments.length
     ? `<div class="ln s7">Payment: ${esc(d.payments.map((p) => p.method).join(", "))}</div>`
@@ -59,15 +58,17 @@ export function receiptHtml(d: ReceiptData): string {
 <style>
   /* Fix the printed page to the roll width; height follows the content. */
   @page { size: ${RECEIPT_WIDTH_MM}mm auto; margin: 0; }
-  /* Every element on the receipt is bold + pure black — no thin or grey text
-     anywhere, including the item rows (Sr / Item / Qty / Rate / Total). */
+  /* Every element on the receipt is the SAME heavy bold weight + pure black — no
+     thin or grey text anywhere, including the item rows and the totals. */
   * { box-sizing: border-box; font-weight: 700; color: #000; }
   html, body {
     margin: 0; padding: 0; background: #fff; color: #000;
+    width: ${RECEIPT_WIDTH_MM}mm;            /* page is the roll width; height follows content */
     /* Stop the browser lightening near-black ink when printing to thermal. */
     -webkit-print-color-adjust: exact; print-color-adjust: exact;
   }
-  /* The receipt is the only flow content — no A4 / full-page-height wrapper. */
+  /* The receipt is the only flow content — width = roll, height = content (no A4),
+     no fixed/min height or trailing space. */
   .receipt {
     width: ${RECEIPT_WIDTH_MM}mm;
     padding: 2mm ${SIDE_PAD_MM}mm 3mm;
@@ -75,9 +76,11 @@ export function receiptHtml(d: ReceiptData): string {
     color: #000;
     font-size: 8pt;
     line-height: 1.25;
-    /* Thermal heads render thin strokes faint — bold the whole receipt so every
-       line prints crisp and dark. Size (not weight) carries the hierarchy. */
+    /* Uniform heavy weight; the faux-bold text-shadow thickens every glyph stroke
+       so the small body / table text prints as dark and heavy as the store-name
+       heading on the thermal head. It does NOT affect layout or page height. */
     font-weight: 700;
+    text-shadow: 0.35px 0 0 currentColor, -0.35px 0 0 currentColor;
     -webkit-print-color-adjust: exact; print-color-adjust: exact;
   }
   .center { text-align: center; }
@@ -122,7 +125,8 @@ export function receiptHtml(d: ReceiptData): string {
       <tbody>${rows}</tbody>
     </table>
 
-    ${discountRow}
+    <div class="row"><span>Subtotal:</span><span>${esc(PKR(d.subtotal))}</span></div>
+    <div class="row"><span>Discount:</span><span>${d.discount > 0 ? `-${esc(PKR(d.discount))}` : esc(PKR(0))}</span></div>
     ${taxRow}
     <div class="row total"><span>TOTAL:</span><span>${esc(PKR(d.total))}</span></div>
     <div class="words">${esc(amountToWords(d.total))}</div>
