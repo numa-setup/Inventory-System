@@ -135,6 +135,10 @@ export async function buildReceiptPdf(d: ReceiptData): Promise<Uint8Array> {
   const rows = d.items.map((it, i) => {
     const name = it.name + (it.label ? ` (${it.label})` : "");
     const nameLines = wrap(reg, BODY, name, COL.name - 6);
+    // Discounted line: show actual (pre-discount) unit price AND the discounted
+    // price actually paid, as an extra name line (row height adjusts to suit).
+    const lineDisc = Number(it.discount) || 0;
+    if (lineDisc > 0 && it.qty > 0) nameLines.push(`Rs ${NUM(it.unit_price)}->${NUM(it.unit_price - lineDisc / it.qty)} ea`);
     return {
       sr: String(i + 1),
       nameLines,

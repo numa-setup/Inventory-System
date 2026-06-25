@@ -32,9 +32,15 @@ export function receiptHtml(d: ReceiptData): string {
     .map((it, i) => {
       const name = esc(it.name + (it.label ? ` (${it.label})` : ""));
       const qty = esc(`${it.qty} ${(it.unit || "Pcs").trim()}`.trim());
+      // When the line carries a discount, show the actual (pre-discount) unit
+      // price AND the discounted price the customer actually pays, under the name.
+      const lineDisc = Number(it.discount) || 0;
+      const discLine = lineDisc > 0 && it.qty > 0
+        ? `<div class="s7">Rs ${esc(NUM(it.unit_price))}-&gt;${esc(NUM(it.unit_price - lineDisc / it.qty))} ea</div>`
+        : "";
       return `<tr>
         <td class="c">${i + 1}</td>
-        <td>${name}</td>
+        <td>${name}${discLine}</td>
         <td>${qty}</td>
         <td class="r">${esc(NUM(it.unit_price))}</td>
         <td class="r">${esc(NUM(it.line_total))}</td>
