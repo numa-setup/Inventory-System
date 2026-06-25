@@ -79,15 +79,17 @@ interface Ctx {
   y: number;
 }
 
-function text(ctx: Ctx, s: string, x: number, size: number, bold = false) {
+// Every text helper defaults to bold: the entire invoice — including item rows —
+// prints in the bold cut, pure black (INK). Nothing on the receipt is thin/light.
+function text(ctx: Ctx, s: string, x: number, size: number, bold = true) {
   ctx.page.drawText(safe(s), { x, y: ctx.y - size, size, font: bold ? ctx.bold : ctx.reg, color: INK });
 }
-function center(ctx: Ctx, s: string, size: number, bold = false) {
+function center(ctx: Ctx, s: string, size: number, bold = true) {
   const font = bold ? ctx.bold : ctx.reg;
   const w = font.widthOfTextAtSize(safe(s), size);
   text(ctx, s, (W - w) / 2, size, bold);
 }
-function right(ctx: Ctx, s: string, rightEdge: number, size: number, bold = false) {
+function right(ctx: Ctx, s: string, rightEdge: number, size: number, bold = true) {
   const font = bold ? ctx.bold : ctx.reg;
   const w = font.widthOfTextAtSize(safe(s), size);
   text(ctx, s, rightEdge - w, size, bold);

@@ -59,7 +59,9 @@ export function receiptHtml(d: ReceiptData): string {
 <style>
   /* Fix the printed page to the roll width; height follows the content. */
   @page { size: ${RECEIPT_WIDTH_MM}mm auto; margin: 0; }
-  * { box-sizing: border-box; }
+  /* Every element on the receipt is bold + pure black — no thin or grey text
+     anywhere, including the item rows (Sr / Item / Qty / Rate / Total). */
+  * { box-sizing: border-box; font-weight: 700; color: #000; }
   html, body {
     margin: 0; padding: 0; background: #fff; color: #000;
     /* Stop the browser lightening near-black ink when printing to thermal. */
