@@ -6,16 +6,26 @@ import { PROMO_SELECT, mapPromotion } from "@hamza/shared/promotions";
 
 export const metadata: Metadata = { title: "POS Billing" };
 
+// First paint renders only a light slice of the catalogue; the client cache
+// (useCatalog → /api/catalog, mirrored to IndexedDB) immediately hydrates the
+// FULL set for scan/search/offline. Rendering — and JS-mapping — the entire
+// catalogue per request was the heavy edge work that tripped 1102 here.
+const POS_GRID_LIMIT = 60;
+
 export default async function PosPage() {
   const supabase = await createClient();
   // SSR first paint from the single catalogue_index view (1 query instead of the
   // old 5-query JS assembly); the client then takes over with the cached index.
-  const [{ data: catalog }, { data: customers }, { data: categories }, { data: settings }, { data: promoRows }, user] = await Promise.all([
+  // `catIds` is a single-column scan used only to build the complete filter-chip
+  // list — far cheaper than mapping every variant into a render object per request.
+  const [{ data: catalog }, { data: catIds }, { data: customers }, { data: categories }, { data: settings }, { data: promoRows }, user] = await Promise.all([
     supabase
       .from("catalog_index")
       .select("variant_id, product_id, product_name, has_variants, sku, label, barcode, price, avg_cost, cost, disc_type, disc_value, reorder_point, category_id, available, image_url, unit")
       .eq("active", true)
-      .order("product_name"),
+      .order("product_name")
+      .limit(POS_GRID_LIMIT),
+    supabase.from("catalog_index").select("category_id").eq("active", true),
     supabase.from("customers").select("id, name, phone, address").order("name"),
     supabase.from("categories").select("id, name, parent_id"),
     supabase.from("settings").select("store_name, tax_percent, store_info").eq("id", 1).maybeSingle(),
@@ -59,8 +69,10 @@ export default async function PosPage() {
     unit: (v.unit as string) ?? null,
   }));
 
-  // top-level categories present in the catalogue, for the filter chips
-  const usedCats = new Set(items.map((i) => i.category_id).filter(Boolean) as string[]);
+  // top-level categories present in the WHOLE active catalogue, for the filter
+  // chips — derived from the light category_id scan so the chip list stays
+  // complete even though the grid itself only first-paints a slice.
+  const usedCats = new Set((catIds ?? []).map((c) => c.category_id).filter(Boolean) as string[]);
   const cats = (categories ?? [])
     .filter((c) => usedCats.has(c.id))
     .map((c) => ({ id: c.id, name: c.parent_id ? `${catName.get(c.parent_id) ?? ""} › ${c.name}` : c.name }))

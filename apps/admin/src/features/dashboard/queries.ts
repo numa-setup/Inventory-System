@@ -21,9 +21,16 @@ export interface DashboardData {
 }
 
 export async function buildDashboard(supabase: Supabase, range: DateRange): Promise<DashboardData> {
-  // These reads are all independent — run getVariantOptions, categories and the
-  // five range queries in a SINGLE parallel batch (was 3 sequential round-trips).
-  const [variants, { data: catRows }, { data: sales }, { data: orders }, { data: avail }, { data: customers }, { data: suppliers }, { data: returnsRaw }] = await Promise.all([
+  // These reads are all independent — run getVariantOptions, categories, the
+  // range queries AND the reorder-point / lots / lot-level reads (used further
+  // down for low-stock + near-expiry) in a SINGLE parallel batch. They don't
+  // depend on the sale ids resolved later, so pulling them up here removes 3
+  // sequential round-trips from the request.
+  const [
+    variants, { data: catRows }, { data: sales }, { data: orders }, { data: avail },
+    { data: customers }, { data: suppliers }, { data: returnsRaw },
+    { data: vrows }, { data: lots }, { data: lotLevels },
+  ] = await Promise.all([
     getVariantOptions(supabase),
     supabase.from("categories").select("id, name"),
     supabase.from("sales").select("id, total, profit, created_at").gte("created_at", iso(range.from)).lte("created_at", iso(range.to)),
@@ -32,6 +39,9 @@ export async function buildDashboard(supabase: Supabase, range: DateRange): Prom
     supabase.from("customers").select("id, name, credit_balance"),
     supabase.from("suppliers").select("id, name, balance"),
     supabase.from("sale_returns").select("id, created_at").gte("created_at", iso(range.from)).lte("created_at", iso(range.to)),
+    supabase.from("product_variants").select("id, reorder_point"),
+    supabase.from("lots").select("id, variant_id, lot_number, expiry_date").not("expiry_date", "is", null),
+    supabase.from("stock_levels").select("lot_id, on_hand").not("lot_id", "is", null),
   ]);
   const vMap = new Map(variants.map((v) => [v.variant_id, v]));
   const catName = new Map<string, string>();
@@ -124,14 +134,11 @@ export async function buildDashboard(supabase: Supabase, range: DateRange): Prom
     const a = availMap.get(v.variant_id);
     return { id: v.variant_id, product_id: v.product_id, name: `${v.product_name} · ${v.label}`, available: a ? Number(a.available) : 0, reorder: 0 };
   });
-  const { data: vrows } = await supabase.from("product_variants").select("id, reorder_point");
   const reorderMap = new Map((vrows ?? []).map((r) => [r.id, Number(r.reorder_point)]));
   const low = lowStock.map((r) => ({ ...r, reorder: reorderMap.get(r.id) ?? 0 }))
     .filter((r) => r.available <= r.reorder).sort((a, b) => a.available - b.available).slice(0, 8);
 
-  // near expiry (FEFO)
-  const { data: lots } = await supabase.from("lots").select("id, variant_id, lot_number, expiry_date").not("expiry_date", "is", null);
-  const { data: lotLevels } = await supabase.from("stock_levels").select("lot_id, on_hand").not("lot_id", "is", null);
+  // near expiry (FEFO) — lots + lot stock-levels were fetched in the batch above
   const lotOnHand = new Map<string, number>();
   for (const l of lotLevels ?? []) lotOnHand.set(l.lot_id, (lotOnHand.get(l.lot_id) ?? 0) + Number(l.on_hand));
   const nearExpiry = (lots ?? [])
