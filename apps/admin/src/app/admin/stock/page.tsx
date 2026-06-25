@@ -7,28 +7,28 @@ export const metadata: Metadata = { title: "Stock" };
 export default async function StockPage() {
   const supabase = await createClient();
 
+  // Each variant carries its product and barcodes via DB-side joins (PostgREST
+  // embeds), so the edge function makes fewer round-trips and skips building the
+  // product/barcode lookup maps. The dead product_options scan (its rows were
+  // never read) is gone; option labels still come from the two option tables.
   const [
-    { data: variants }, { data: products }, { data: categories },
-    { data: availability }, { data: barcodes }, { data: levels }, { data: locations },
-    { data: options }, { data: optionValues }, { data: vov },
+    { data: variants }, { data: categories },
+    { data: availability }, { data: levels }, { data: locations },
+    { data: optionValues }, { data: vov },
   ] = await Promise.all([
-    supabase.from("product_variants").select("id, product_id, sku, reorder_point, active, is_default"),
-    supabase.from("products").select("id, name, base_unit, category_id"),
+    supabase
+      .from("product_variants")
+      .select("id, product_id, sku, reorder_point, is_default, products(name, base_unit, category_id), product_barcodes(barcode, is_primary)"),
     supabase.from("categories").select("id, name, parent_id"),
     supabase.from("variant_availability").select("variant_id, on_hand, reserved, available, avg_cost"),
-    supabase.from("product_barcodes").select("variant_id, barcode, is_primary"),
     supabase.from("stock_levels").select("variant_id, location_id, on_hand"),
     supabase.from("locations").select("id, code, name, type").eq("type", "PHYSICAL").order("code"),
-    supabase.from("product_options").select("id, product_id, name, sort").order("sort"),
-    supabase.from("product_option_values").select("id, option_id, value"),
+    supabase.from("product_option_values").select("id, value"),
     supabase.from("variant_option_values").select("variant_id, option_value_id"),
   ]);
 
-  const productMap = new Map((products ?? []).map((p) => [p.id, p]));
   const catName = new Map((categories ?? []).map((c) => [c.id, c.name]));
   const availMap = new Map((availability ?? []).map((a) => [a.variant_id, a]));
-  const barcodeMap = new Map<string, string>();
-  for (const b of barcodes ?? []) if (!barcodeMap.has(b.variant_id) || b.is_primary) barcodeMap.set(b.variant_id, b.barcode);
 
   const valLabel = new Map((optionValues ?? []).map((v) => [v.id, v.value]));
   const variantLabels = new Map<string, string[]>();
@@ -52,7 +52,11 @@ export default async function StockPage() {
   }
 
   const rows: StockRow[] = (variants ?? []).map((v) => {
-    const p = productMap.get(v.product_id);
+    const prod = v.products as { name: string; base_unit: string; category_id: string | null } | { name: string; base_unit: string; category_id: string | null }[] | null;
+    const p = Array.isArray(prod) ? prod[0] ?? null : prod;
+    const bcs = (v.product_barcodes ?? []) as { barcode: string; is_primary: boolean }[];
+    // primary barcode if one exists, else the first — matches the old map's pick.
+    const barcode = bcs.find((b) => b.is_primary)?.barcode ?? bcs[0]?.barcode ?? null;
     const av = availMap.get(v.id);
     const on_hand = av ? Number(av.on_hand) : 0;
     const avg_cost = av ? Number(av.avg_cost) : 0;
@@ -64,7 +68,7 @@ export default async function StockPage() {
       product_name: p?.name ?? "—",
       label: (variantLabels.get(v.id) ?? []).join(" / ") || (v.is_default ? "Default" : v.sku),
       sku: v.sku,
-      barcode: barcodeMap.get(v.id) ?? null,
+      barcode,
       base_unit: p?.base_unit ?? "pcs",
       category: p?.category_id ? (catName.get(p.category_id) ?? "—") : "—",
       category_id: p?.category_id ?? null,
