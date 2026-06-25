@@ -96,18 +96,33 @@ interface ReturnsAgg {
   totalProfit: number;
   byDate: { created_at: string; revenue: number; profit: number }[];
   byVariant: Map<string, { qty: number; revenue: number; cogs: number; profit: number }>;
+  // Returns attributed to the ORIGINAL sale's customer / cashier, so the customer
+  // and staff reports can net refunds exactly like the Sales tab nets its headline.
+  byCustomer: Map<string, { revenue: number; profit: number }>;
+  byCashier: Map<string, { revenue: number; profit: number }>;
 }
 async function fetchReturns(supabase: Supabase, range: DateRange): Promise<ReturnsAgg> {
   const { data: returns } = await supabase
-    .from("sale_returns").select("id, created_at")
+    .from("sale_returns").select("id, created_at, sales(customer_id, cashier_id)")
     .gte("created_at", iso(range.from)).lte("created_at", iso(range.to));
   const ids = (returns ?? []).map((r) => r.id);
   const { data: items } = ids.length
     ? await supabase.from("sale_return_items").select("return_id, variant_id, qty, line_total, unit_cogs").in("return_id", ids)
     : { data: [] as Record<string, unknown>[] };
   const dateOf = new Map((returns ?? []).map((r) => [r.id as string, r.created_at as string]));
+  // each return -> the customer / cashier of the sale it reverses (embedded join)
+  const custOf = new Map<string, string | null>();
+  const cashOf = new Map<string, string | null>();
+  for (const r of returns ?? []) {
+    const rel = (r as Record<string, unknown>).sales;
+    const s = (Array.isArray(rel) ? rel[0] : rel) as { customer_id: string | null; cashier_id: string | null } | null;
+    custOf.set(r.id as string, s?.customer_id ?? null);
+    cashOf.set(r.id as string, s?.cashier_id ?? null);
+  }
   const byVariant = new Map<string, { qty: number; revenue: number; cogs: number; profit: number }>();
   const perReturn = new Map<string, { created_at: string; revenue: number; profit: number }>();
+  const byCustomer = new Map<string, { revenue: number; profit: number }>();
+  const byCashier = new Map<string, { revenue: number; profit: number }>();
   let totalRevenue = 0, totalCogs = 0;
   for (const it of items ?? []) {
     const rev = Number(it.line_total); const cogs = Number(it.qty) * Number(it.unit_cogs); const prof = rev - cogs;
@@ -121,8 +136,12 @@ async function fetchReturns(supabase: Supabase, range: DateRange): Promise<Retur
     const rid = it.return_id as string;
     const pr = perReturn.get(rid) ?? { created_at: dateOf.get(rid) ?? iso(range.from), revenue: 0, profit: 0 };
     pr.revenue += rev; pr.profit += prof; perReturn.set(rid, pr);
+    const cid = custOf.get(rid);
+    if (cid) { const cur = byCustomer.get(cid) ?? { revenue: 0, profit: 0 }; cur.revenue += rev; cur.profit += prof; byCustomer.set(cid, cur); }
+    const kid = cashOf.get(rid);
+    if (kid) { const cur = byCashier.get(kid) ?? { revenue: 0, profit: 0 }; cur.revenue += rev; cur.profit += prof; byCashier.set(kid, cur); }
   }
-  return { totalRevenue, totalCogs, totalProfit: totalRevenue - totalCogs, byDate: [...perReturn.values()], byVariant };
+  return { totalRevenue, totalCogs, totalProfit: totalRevenue - totalCogs, byDate: [...perReturn.values()], byVariant, byCustomer, byCashier };
 }
 
 /**
@@ -483,25 +502,38 @@ async function stockInReport(supabase: Supabase, range: DateRange, params: URLSe
 async function productsReport(supabase: Supabase, range: DateRange, params: URLSearchParams): Promise<ReportData> {
   const view = params.get("view") ?? "best";
   const { items } = await fetchSales(supabase, range);
+  const returns = await fetchReturns(supabase, range);
   const variants = await getVariantOptions(supabase);
   const { data: avail } = await supabase.from("variant_availability").select("variant_id, on_hand");
   const availMap = new Map((avail ?? []).map((a) => [a.variant_id, Number(a.on_hand)]));
 
-  const sold = new Map<string, { qty: number; revenue: number; profit: number }>();
+  // Gross units/revenue/profit per variant — used ONLY for the unchanged Dead-stock
+  // classification ("did this variant ever sell at all?").
+  const gross = new Map<string, { qty: number; revenue: number; profit: number }>();
   for (const it of items) {
     const k = it.variant_id as string;
-    const cur = sold.get(k) ?? { qty: 0, revenue: 0, profit: 0 };
+    const cur = gross.get(k) ?? { qty: 0, revenue: 0, profit: 0 };
     cur.qty += Number(it.qty); cur.revenue += Number(it.line_total);
     cur.profit += Number(it.line_total) - Number(it.qty) * Number(it.unit_cogs);
-    sold.set(k, cur);
+    gross.set(k, cur);
+  }
+  // Net of returns — every reported figure (units/revenue/profit/top-sellers) is
+  // net, so a fully returned item is not counted as a net sale.
+  const sold = new Map<string, { qty: number; revenue: number; profit: number }>();
+  for (const [k, g] of gross) sold.set(k, { ...g });
+  for (const [vid, rv] of returns.byVariant) {
+    const cur = sold.get(vid) ?? { qty: 0, revenue: 0, profit: 0 };
+    cur.qty -= rv.qty; cur.revenue -= rv.revenue; cur.profit -= rv.profit;
+    sold.set(vid, cur);
   }
 
   let all = variants.map((v) => {
     const s = sold.get(v.variant_id) ?? { qty: 0, revenue: 0, profit: 0 };
-    return { name: `${v.product_name} · ${v.label}`, sku: v.sku, qty: s.qty, revenue: s.revenue, profit: s.profit, on_hand: availMap.get(v.variant_id) ?? 0 };
+    return { name: `${v.product_name} · ${v.label}`, sku: v.sku, qty: s.qty, revenue: s.revenue, profit: s.profit, on_hand: availMap.get(v.variant_id) ?? 0, grossQty: gross.get(v.variant_id)?.qty ?? 0 };
   });
 
-  if (view === "dead") all = all.filter((r) => r.qty === 0 && r.on_hand > 0).sort((a, b) => b.on_hand - a.on_hand);
+  // Dead = never sold (gross) and still on hand — unchanged by returns netting.
+  if (view === "dead") all = all.filter((r) => r.grossQty === 0 && r.on_hand > 0).sort((a, b) => b.on_hand - a.on_hand);
   else if (view === "slow") all = all.filter((r) => r.on_hand > 0).sort((a, b) => a.qty - b.qty);
   else all = all.filter((r) => r.qty > 0).sort((a, b) => b.revenue - a.revenue);
 
@@ -511,7 +543,7 @@ async function productsReport(supabase: Supabase, range: DateRange, params: URLS
     key: "products", title: "Product Performance", subtitle: range.label,
     kpis: [
       { label: "Variants sold", value: formatNumber([...sold.values()].filter((s) => s.qty > 0).length), accent: "blue" },
-      { label: "Dead stock", value: formatNumber(variants.filter((v) => !(sold.get(v.variant_id)?.qty) && (availMap.get(v.variant_id) ?? 0) > 0).length), accent: "coral" },
+      { label: "Dead stock", value: formatNumber(variants.filter((v) => !(gross.get(v.variant_id)?.qty) && (availMap.get(v.variant_id) ?? 0) > 0).length), accent: "coral" },
       { label: "Units sold", value: formatNumber([...sold.values()].reduce((s, x) => s + x.qty, 0)), accent: "teal" },
       { label: "Revenue", value: formatPKR([...sold.values()].reduce((s, x) => s + x.revenue, 0), { compact: true }), accent: "green" },
     ],
@@ -570,6 +602,7 @@ async function purchasesReport(supabase: Supabase, range: DateRange): Promise<Re
 /* ---------------- 6. Customers & udhaar ---------------- */
 async function customersReport(supabase: Supabase, range: DateRange): Promise<ReportData> {
   const { sales } = await fetchSales(supabase, range);
+  const returns = await fetchReturns(supabase, range);
   const { data: customers } = await supabase.from("customers").select("id, name, credit_balance");
   const { data: ledger } = await supabase.from("customer_ledger").select("customer_id, type, created_at").eq("type", "CHARGE");
 
@@ -580,6 +613,8 @@ async function customersReport(supabase: Supabase, range: DateRange): Promise<Re
     cur.amount += Number(s.total); cur.orders += 1;
     salesBy.set(s.customer_id, cur);
   }
+  // Net refunds out of each customer's sales (orders count stays a transaction tally).
+  const netSalesOf = (cid: string) => (salesBy.get(cid)?.amount ?? 0) - (returns.byCustomer.get(cid)?.revenue ?? 0);
   // oldest charge per customer (rough aging)
   const oldestCharge = new Map<string, number>();
   for (const l of ledger ?? []) {
@@ -594,7 +629,7 @@ async function customersReport(supabase: Supabase, range: DateRange): Promise<Re
 
   const totalOutstanding = (customers ?? []).reduce((s, c) => s + Math.max(Number(c.credit_balance), 0), 0);
   const rows = (customers ?? []).map((c) => ({
-    name: c.name, sales: salesBy.get(c.id)?.amount ?? 0, orders: salesBy.get(c.id)?.orders ?? 0,
+    name: c.name, sales: netSalesOf(c.id), orders: salesBy.get(c.id)?.orders ?? 0,
     outstanding: Number(c.credit_balance), aging: ageBucket(c.id, Number(c.credit_balance)),
   })).sort((a, b) => b.outstanding - a.outstanding || b.sales - a.sales);
 
@@ -603,7 +638,7 @@ async function customersReport(supabase: Supabase, range: DateRange): Promise<Re
     kpis: [
       { label: "Outstanding Udhaar", value: formatPKR(totalOutstanding, { compact: true }), accent: "coral" },
       { label: "On Khata", value: formatNumber((customers ?? []).filter((c) => Number(c.credit_balance) > 0).length), accent: "amber" },
-      { label: "Sales (period)", value: formatPKR(sales.reduce((s, x) => s + Number(x.total), 0), { compact: true }), accent: "blue" },
+      { label: "Sales (period)", value: formatPKR(sales.reduce((s, x) => s + Number(x.total), 0) - returns.totalRevenue, { compact: true }), accent: "blue" },
       { label: "Customers", value: formatNumber((customers ?? []).length), accent: "teal" },
     ],
     charts: [{ type: "bar", title: "Top customers by sales", accent: "teal", dataKey: "sales",
@@ -619,6 +654,7 @@ async function customersReport(supabase: Supabase, range: DateRange): Promise<Re
 /* ---------------- 7. Staff activity ---------------- */
 async function usersReport(supabase: Supabase, range: DateRange): Promise<ReportData> {
   const { sales } = await fetchSales(supabase, range);
+  const returns = await fetchReturns(supabase, range);
   const { data: profiles } = await supabase.from("profiles").select("id, full_name, role");
   const { data: audit } = await supabase
     .from("audit_log").select("actor, action, created_at")
@@ -633,6 +669,9 @@ async function usersReport(supabase: Supabase, range: DateRange): Promise<Report
     return stat.get(id)!;
   };
   for (const s of sales) if (s.cashier_id) { const r = ensure(s.cashier_id); r.orders += 1; r.sales += Number(s.total); }
+  // Net refunds out of the cashier's sales money (orders stays a transaction tally).
+  // Only adjust cashiers already active this period — never invent a new staff row.
+  for (const [cashierId, rv] of returns.byCashier) { const r = stat.get(cashierId); if (r) r.sales -= rv.revenue; }
   for (const a of audit ?? []) if (a.actor) {
     const r = ensure(a.actor); r.actions += 1;
     if (a.action === "stock_adjustment" || a.action === "cycle_count") r.adjustments += 1;
@@ -671,8 +710,10 @@ async function systemReport(supabase: Supabase, range: DateRange): Promise<Repor
   ]);
 
   const web = await fetchWebOrders(supabase, range);
-  const revenue = sales.reduce((s, x) => s + Number(x.total), 0) + web.reduce((s, x) => s + x.total, 0);
-  const profit = sales.reduce((s, x) => s + Number(x.profit), 0) + web.reduce((s, x) => s + x.profit, 0);
+  const returns = await fetchReturns(supabase, range);
+  // Net of counter returns so the headline + every breakdown agrees with the Sales tab.
+  const revenue = sales.reduce((s, x) => s + Number(x.total), 0) + web.reduce((s, x) => s + x.total, 0) - returns.totalRevenue;
+  const profit = sales.reduce((s, x) => s + Number(x.profit), 0) + web.reduce((s, x) => s + x.profit, 0) - returns.totalProfit;
   const stockValue = (avail ?? []).reduce((s, a) => { const v = vMap.get(a.variant_id); return s + Number(a.on_hand) * (v?.cost ?? 0); }, 0);
   const payables = (suppliers ?? []).reduce((s, x) => s + Math.max(Number(x.balance), 0), 0);
   const udhaar = (customers ?? []).reduce((s, x) => s + Math.max(Number(x.credit_balance), 0), 0);
@@ -682,6 +723,12 @@ async function systemReport(supabase: Supabase, range: DateRange): Promise<Repor
     const v = vMap.get(it.variant_id as string);
     const cat = v?.category_id ? (catName.get(v.category_id) ?? "—") : "Uncategorised";
     byCat.set(cat, (byCat.get(cat) ?? 0) + Number(it.line_total));
+  }
+  // Subtract returned revenue from its product's category (net category mix).
+  for (const [vid, rv] of returns.byVariant) {
+    const v = vMap.get(vid);
+    const cat = v?.category_id ? (catName.get(v.category_id) ?? "—") : "Uncategorised";
+    byCat.set(cat, (byCat.get(cat) ?? 0) - rv.revenue);
   }
 
   const b = bucketOf(range);
@@ -696,6 +743,13 @@ async function systemReport(supabase: Supabase, range: DateRange): Promise<Repor
     const k = bucketKey(new Date(w.created_at), b);
     const cur = dayAgg.get(k) ?? { label: k, sales: 0, profit: 0 };
     cur.sales += w.total; cur.profit += w.profit;
+    dayAgg.set(k, cur);
+  }
+  // Net returns per period (a return isn't a new transaction, only money out).
+  for (const r of returns.byDate) {
+    const k = bucketKey(new Date(r.created_at), b);
+    const cur = dayAgg.get(k) ?? { label: k, sales: 0, profit: 0 };
+    cur.sales -= r.revenue; cur.profit -= r.profit;
     dayAgg.set(k, cur);
   }
 
@@ -713,6 +767,7 @@ async function systemReport(supabase: Supabase, range: DateRange): Promise<Repor
       { ...trend(range, [
         ...sales.map((s) => ({ created_at: s.created_at, value: Number(s.total) })),
         ...web.map((w) => ({ created_at: w.created_at, value: w.total })),
+        ...returns.byDate.map((r) => ({ created_at: r.created_at, value: -r.revenue })),
       ], "blue", "sales"), title: "Sales trend" },
       { type: "donut", title: "Sales by category", data: [...byCat.entries()].map(([name, value]) => ({ name, value: Math.round(value) })) },
     ],
