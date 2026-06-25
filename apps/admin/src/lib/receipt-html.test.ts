@@ -30,9 +30,40 @@ describe("receiptHtml (80mm thermal sizing)", () => {
     expect(html).toContain("SALES INVOICE");
     expect(html).toContain("INV-12345678");
     expect(html).toContain("Soap");
-    expect(html).toContain("Rs 550"); // total = net paid
+    expect(html).toContain("Rs 550"); // Net Total = final payable (incl. bill discount)
     expect(html).toContain("Payment: CASH");
     expect(html).toContain("Thank you!");
+  });
+
+  it("has the exact 7-column header order Sr|Item|Qty|Rate|Disc|D.Rate|Total", () => {
+    const html = receiptHtml(base);
+    expect(html).toMatch(
+      /Sr<\/th>\s*<th>Item<\/th>\s*<th>Qty<\/th>\s*<th class="r">Rate<\/th>\s*<th class="r">Disc<\/th>\s*<th class="r">D\.Rate<\/th>\s*<th class="r">Total<\/th>/,
+    );
+  });
+
+  it("derives Disc, D.Rate and after-discount Total per line (Rate 700, d 300/unit, qty 2)", () => {
+    // line_total is GROSS (1400) on purpose — Total must be derived, not copied.
+    const html = receiptHtml({
+      ...base,
+      items: [{ name: "Oil", qty: 2, unit: "Pcs", unit_price: 700, discount: 600, line_total: 1400 }],
+      subtotal: 1400, discount: 600, total: 800,
+    });
+    expect(html).toContain(`<td class="r">700</td>`); // Rate
+    expect(html).toContain(`<td class="r">600</td>`); // Disc = d×q
+    expect(html).toContain(`<td class="r">400</td>`); // D.Rate = R−d
+    expect(html).toContain(`<td class="r">800</td>`); // Total = (R−d)×q (after discount)
+    // Totals identity: Total − Total Discount = Net Total (1400 − 600 = 800).
+    expect(html).toContain("Total:</span><span>Rs 1,400");
+    expect(html).toContain("Total Discount:</span><span>-Rs 600");
+    expect(html).toContain("Net Total:</span><span>Rs 800");
+  });
+
+  it("starts at the very top and has no top/bottom padding band", () => {
+    const html = receiptHtml(base);
+    expect(html).toMatch(/padding:\s*0\s+3\.5mm\s+0;/); // .receipt: no top/bottom pad
+    expect(html).toContain("-webkit-text-stroke"); // bold-everywhere faux weight
+    expect(html).toMatch(/print-color-adjust:\s*exact/);
   });
 
   it("grows with more items (multi-item taller than 1-item)", () => {

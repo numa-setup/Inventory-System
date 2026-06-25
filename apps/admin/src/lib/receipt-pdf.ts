@@ -42,12 +42,13 @@ const GRID = rgb(0, 0, 0);
 // Bordered items table columns (left edge x, width). Sum of widths == usable.
 const USABLE = W - M * 2; // 206pt
 const COL = {
-  sr: 14,
-  name: USABLE - 14 - 28 - 28 - 34 - 30, // flexible name column = 72pt
-  qty: 28,
-  rate: 28,
-  disRate: 34, // wide enough for the "Dis Rate" header
-  total: 30,
+  sr: 12,
+  name: USABLE - 12 - 24 - 26 - 26 - 28 - 28, // flexible name column = 62pt
+  qty: 24, // fits "2 Pcs" / "10 Kg" without touching the Rate gridline
+  rate: 26,
+  disc: 26,
+  dRate: 28, // wide enough for the "D.Rate" header
+  total: 28,
 };
 
 /** Greedy word-wrap (with hard char-split for over-long words). */
@@ -125,8 +126,9 @@ export async function buildReceiptPdf(d: ReceiptData): Promise<Uint8Array> {
   const xName = xSr + COL.sr;
   const xQty = xName + COL.name;
   const xRate = xQty + COL.qty;
-  const xDisRate = xRate + COL.rate;
-  const xTotal = xDisRate + COL.disRate;
+  const xDisc = xRate + COL.rate;
+  const xDRate = xDisc + COL.disc;
+  const xTotal = xDRate + COL.dRate;
   const xEnd = xTotal + COL.total; // == W - M
 
   const BODY = 7; // table body / detail font
@@ -137,20 +139,30 @@ export async function buildReceiptPdf(d: ReceiptData): Promise<Uint8Array> {
   const rows = d.items.map((it, i) => {
     const name = it.name + (it.label ? ` (${it.label})` : "");
     const nameLines = wrap(reg, BODY, name, COL.name - 6);
-    // Rate = actual (pre-discount) unit price; Dis Rate = discounted unit price
-    // actually charged; Total = Qty × Dis Rate (the net line amount).
+    // Rate = pre-discount unit price (R); Disc = total line discount (d×q);
+    // D.Rate = discounted unit price (R − d); Total = (R − d)×q = after-discount
+    // line total. Derived from unit_price/discount/qty so it is correct whether
+    // line_total is gross (POS) or net (saved bill) — display only.
     const lineDisc = Number(it.discount) || 0;
-    const disRate = it.qty > 0 ? it.unit_price - lineDisc / it.qty : it.unit_price;
+    const dRate = it.qty > 0 ? it.unit_price - lineDisc / it.qty : it.unit_price;
+    const lineNet = it.unit_price * it.qty - lineDisc;
     return {
       sr: String(i + 1),
       nameLines,
       qty: `${it.qty} ${(it.unit || "Pcs").trim()}`.trim(),
       rate: NUM(it.unit_price),
-      disRate: NUM(disRate),
-      total: NUM(it.line_total),
+      disc: NUM(lineDisc),
+      dRate: NUM(dRate),
+      total: NUM(lineNet),
       h: PAD * 2 + Math.max(1, nameLines.length) * ROWLH,
     };
   });
+
+  // Totals from the bill's own figures (include bill-level discounts):
+  //   Total = subtotal · Total Discount = discount · Net Total = total.
+  const grandTotal = d.subtotal;
+  const totalDiscount = d.discount;
+  const netTotal = d.total;
 
   const wordsLines = wrap(reg, 7, amountToWords(d.total), USABLE - 4);
 
@@ -216,10 +228,11 @@ export async function buildReceiptPdf(d: ReceiptData): Promise<Uint8Array> {
   // header row
   const headerBottom = ctx.y - headerRowH;
   text({ ...ctx, y: ctx.y - PAD }, "Sr", xSr + 2, BODY, true);
-  text({ ...ctx, y: ctx.y - PAD }, "Item Name", xName + 3, BODY, true);
+  text({ ...ctx, y: ctx.y - PAD }, "Item", xName + 3, BODY, true);
   text({ ...ctx, y: ctx.y - PAD }, "Qty", xQty + 3, BODY, true);
   right({ ...ctx, y: ctx.y - PAD }, "Rate", xRate + COL.rate - 2, BODY, true);
-  right({ ...ctx, y: ctx.y - PAD }, "Dis Rate", xDisRate + COL.disRate - 2, BODY, true);
+  right({ ...ctx, y: ctx.y - PAD }, "Disc", xDisc + COL.disc - 2, BODY, true);
+  right({ ...ctx, y: ctx.y - PAD }, "D.Rate", xDRate + COL.dRate - 2, BODY, true);
   right({ ...ctx, y: ctx.y - PAD }, "Total", xTotal + COL.total - 2, BODY, true);
   ctx.y = headerBottom;
 
@@ -231,7 +244,8 @@ export async function buildReceiptPdf(d: ReceiptData): Promise<Uint8Array> {
     r.nameLines.forEach((ln, k) => text({ ...ctx, y: baseY - k * ROWLH }, ln, xName + 3, BODY));
     text({ ...ctx, y: baseY }, r.qty, xQty + 3, BODY);
     right({ ...ctx, y: baseY }, r.rate, xRate + COL.rate - 2, BODY);
-    right({ ...ctx, y: baseY }, r.disRate, xDisRate + COL.disRate - 2, BODY);
+    right({ ...ctx, y: baseY }, r.disc, xDisc + COL.disc - 2, BODY);
+    right({ ...ctx, y: baseY }, r.dRate, xDRate + COL.dRate - 2, BODY);
     right({ ...ctx, y: baseY }, r.total, xTotal + COL.total - 2, BODY);
     ctx.y = rowTop - r.h;
     hline(ctx, ctx.y); // row separator
@@ -242,17 +256,18 @@ export async function buildReceiptPdf(d: ReceiptData): Promise<Uint8Array> {
   hline(ctx, tableTop, M, W - M); // top
   hline(ctx, headerBottom, M, W - M); // under header
   hline(ctx, tableBottom, M, W - M); // bottom (redundant w/ last sep, harmless)
-  for (const x of [xSr, xName, xQty, xRate, xDisRate, xTotal, xEnd]) vline(ctx, x, tableTop, tableBottom);
+  for (const x of [xSr, xName, xQty, xRate, xDisc, xDRate, xTotal, xEnd]) vline(ctx, x, tableTop, tableBottom);
 
   ctx.y = tableBottom - 4;
 
   // ---- Totals breakdown — Total (pre-discount) → Total Discount → Net Total ----
-  ctx.y -= 10; right(ctx, `Total: ${PKR(d.subtotal)}`, W - M, 8);
-  ctx.y -= 10; right(ctx, `Total Discount: ${d.discount > 0 ? `-${PKR(d.discount)}` : PKR(0)}`, W - M, 8);
+  // Line-derived so Total − Total Discount = Net Total exactly (matches columns).
+  ctx.y -= 10; right(ctx, `Total: ${PKR(grandTotal)}`, W - M, 8);
+  ctx.y -= 10; right(ctx, `Total Discount: ${totalDiscount > 0 ? `-${PKR(totalDiscount)}` : PKR(0)}`, W - M, 8);
   if (d.tax > 0) { ctx.y -= 10; right(ctx, `Tax (${d.tax_percent}%): ${PKR(d.tax)}`, W - M, 8); }
   ctx.y -= 14;
   text(ctx, "Net Total:", M, 11, true);
-  right(ctx, PKR(d.total), W - M, 11, true);
+  right(ctx, PKR(netTotal), W - M, 11, true);
   ctx.y -= 4;
 
   // ---- Amount in words ----

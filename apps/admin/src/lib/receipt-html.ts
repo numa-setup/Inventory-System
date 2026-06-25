@@ -32,21 +32,36 @@ export function receiptHtml(d: ReceiptData): string {
     .map((it, i) => {
       const name = esc(it.name + (it.label ? ` (${it.label})` : ""));
       const qty = esc(`${it.qty} ${(it.unit || "Pcs").trim()}`.trim());
-      // Rate     = the actual (pre-discount) unit price.
-      // Dis Rate = the discounted unit price actually charged (Rate when no disc).
-      // Total    = Qty × Dis Rate = the net amount paid for the line.
+      // Rate   = actual pre-discount unit price (R).
+      // Disc   = total discount for the line across its qty (d×q) — a money amount.
+      // D.Rate = discounted unit price actually charged (R − d).
+      // Total  = (R − d) × q = after-discount line total (what the customer pays).
+      // Derived from unit_price / discount / qty so Total is correct whether the
+      // source line_total is gross (POS receipt) or net (saved bill) — DISPLAY
+      // ONLY, no pricing/discount calculation is changed.
       const lineDisc = Number(it.discount) || 0;
-      const disRate = it.qty > 0 ? it.unit_price - lineDisc / it.qty : it.unit_price;
+      const dRate = it.qty > 0 ? it.unit_price - lineDisc / it.qty : it.unit_price;
+      const lineNet = it.unit_price * it.qty - lineDisc;
       return `<tr>
         <td class="c">${i + 1}</td>
         <td>${name}</td>
         <td>${qty}</td>
         <td class="r">${esc(NUM(it.unit_price))}</td>
-        <td class="r">${esc(NUM(disRate))}</td>
-        <td class="r">${esc(NUM(it.line_total))}</td>
+        <td class="r">${esc(NUM(lineDisc))}</td>
+        <td class="r">${esc(NUM(dRate))}</td>
+        <td class="r">${esc(NUM(lineNet))}</td>
       </tr>`;
     })
     .join("");
+
+  // Totals come from the bill's own figures so bill-level (cart) discounts are
+  // included and the identity holds: Total − Total Discount = Net Total.
+  //   Total          = subtotal (Σ Rate×Qty, pre-discount grand total)
+  //   Total Discount = discount (all line + bill discounts)
+  //   Net Total      = total    (final payable after discount)
+  const grandTotal = d.subtotal;
+  const totalDiscount = d.discount;
+  const netTotal = d.total;
 
   const taxRow = d.tax > 0 ? `<div class="ln r">Tax (${esc(d.tax_percent)}%): ${esc(PKR(d.tax))}</div>` : "";
   const payRow = d.payments.length
@@ -77,9 +92,10 @@ export function receiptHtml(d: ReceiptData): string {
      no fixed/min height or trailing space. */
   .receipt {
     width: ${RECEIPT_WIDTH_MM}mm;
-    /* No top padding so the receipt starts at the very top of the roll — no
-       leading blank space above the header. */
-    padding: 0 ${SIDE_PAD_MM}mm 3mm;
+    /* No top OR bottom padding so the slip starts at the very top (above the
+       logo/name) and ends right after the footer — paper height = content only,
+       no leading or trailing blank band. */
+    padding: 0 ${SIDE_PAD_MM}mm 0;
     font-family: "Courier New", Courier, monospace;
     color: #000;
     font-size: 8pt;
@@ -102,9 +118,9 @@ export function receiptHtml(d: ReceiptData): string {
   .row { display: flex; justify-content: space-between; gap: 4mm; }
   .gap { height: 2mm; }
   table { width: 100%; border-collapse: collapse; font-size: 7pt; margin-top: 1mm; table-layout: fixed; }
-  th, td { border: 0.4pt solid #000; padding: 0.6mm 0.8mm; vertical-align: top; word-wrap: break-word; overflow-wrap: anywhere; }
+  th, td { border: 0.4pt solid #000; padding: 0.6mm 0.5mm; vertical-align: top; word-wrap: break-word; overflow-wrap: anywhere; }
   th { font-weight: 700; }
-  col.sr { width: 5mm; } col.qty { width: 10mm; } col.rate { width: 11mm; } col.dis { width: 11mm; } col.tot { width: 12mm; }
+  col.sr { width: 4mm; } col.qty { width: 8mm; } col.rate { width: 10mm; } col.disc { width: 10mm; } col.drate { width: 11mm; } col.tot { width: 11mm; }
   .total { font-weight: 700; font-size: 11pt; margin-top: 1.5mm; }
   .words { font-size: 7pt; margin-top: 0.5mm; }
   .footer { font-size: 7pt; margin-top: 2mm; }
@@ -126,18 +142,18 @@ export function receiptHtml(d: ReceiptData): string {
     <div class="row"><span>Invoice No: ${esc(d.receipt_no)}</span><span>Page 1 of 1</span></div>
 
     <table>
-      <colgroup><col class="sr" /><col /><col class="qty" /><col class="rate" /><col class="dis" /><col class="tot" /></colgroup>
+      <colgroup><col class="sr" /><col /><col class="qty" /><col class="rate" /><col class="disc" /><col class="drate" /><col class="tot" /></colgroup>
       <thead>
-        <tr><th class="c">Sr</th><th>Item Name</th><th>Qty</th><th class="r">Rate</th><th class="r">Dis Rate</th><th class="r">Total</th></tr>
+        <tr><th class="c">Sr</th><th>Item</th><th>Qty</th><th class="r">Rate</th><th class="r">Disc</th><th class="r">D.Rate</th><th class="r">Total</th></tr>
       </thead>
       <tbody>${rows}</tbody>
     </table>
 
-    <div class="row"><span>Total:</span><span>${esc(PKR(d.subtotal))}</span></div>
-    <div class="row"><span>Total Discount:</span><span>${d.discount > 0 ? `-${esc(PKR(d.discount))}` : esc(PKR(0))}</span></div>
+    <div class="row"><span>Total:</span><span>${esc(PKR(grandTotal))}</span></div>
+    <div class="row"><span>Total Discount:</span><span>${totalDiscount > 0 ? `-${esc(PKR(totalDiscount))}` : esc(PKR(0))}</span></div>
     ${taxRow}
-    <div class="row total"><span>Net Total:</span><span>${esc(PKR(d.total))}</span></div>
-    <div class="words">${esc(amountToWords(d.total))}</div>
+    <div class="row total"><span>Net Total:</span><span>${esc(PKR(netTotal))}</span></div>
+    <div class="words">${esc(amountToWords(netTotal))}</div>
     ${payRow}
     ${d.store.footer ? `<div class="center footer">${esc(d.store.footer)}</div>` : ""}
   </div>
