@@ -1,7 +1,7 @@
 // Receipt/invoice data shapes. There is ONE invoice template in the system —
-// lib/receipt-pdf.ts (buildReceiptPdf) — used for the POS "Sale complete"
-// preview, Print/Download, and the WhatsApp PDF alike. These types describe the
-// data pulled from a sale record that the template renders.
+// lib/receipt-html.ts (receiptHtml) — used for both the POS "Sale complete"
+// preview and the thermal Print action (all client-side; no server PDF). These
+// types describe the data pulled from a sale record that the template renders.
 
 export interface ReceiptItem {
   name: string;

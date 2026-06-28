@@ -72,6 +72,13 @@ describe("receiptHtml (80mm thermal sizing)", () => {
     expect(html).toContain("Tea (200g)"); // real label preserved
   });
 
+  it("injects the auto-print script by default and omits it for a passive preview", () => {
+    expect(receiptHtml(base)).toContain("window.print()"); // Print pop-up
+    const preview = receiptHtml(base, { autoPrint: false });
+    expect(preview).not.toContain("window.print()"); // iframe preview must not auto-print
+    expect(preview).toContain("SALES INVOICE"); // still the full invoice
+  });
+
   it("starts at the very top and has no top/bottom padding band", () => {
     const html = receiptHtml(base);
     expect(html).toMatch(/padding:\s*0\s+3\.5mm\s+0;/); // .receipt: no top/bottom pad

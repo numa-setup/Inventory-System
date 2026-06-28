@@ -7,7 +7,7 @@ import "./globals.css";
 // Cloudflare Pages (@cloudflare/next-on-pages) runs every server route on the
 // Workers Edge runtime. Declaring it on the root layout opts the whole admin app
 // in, so each page/server-action doesn't need its own export. No behaviour change:
-// all server code here is already Edge-safe (Web Crypto, fetch, pure-JS pdf-lib).
+// all server code here is already Edge-safe (Web Crypto, fetch only — no Node APIs).
 export const runtime = "edge";
 
 const jakarta = Plus_Jakarta_Sans({

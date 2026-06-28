@@ -1,14 +1,13 @@
-// Thermal-printable HTML version of the SALES INVOICE — used for the Print
-// action so the browser prints an 80mm-wide roll receipt whose height is exactly
-// the content (no A4 trailing paper). The visual design mirrors the PDF template
-// (lib/receipt-pdf.ts) one-to-one — same monospace font, sections, bordered
-// items table, totals and amount-in-words — only the OUTPUT MEDIUM differs.
+// Thermal SALES INVOICE — the single invoice template in the system. It backs
+// BOTH the POS "Sale complete" preview (rendered passively in an <iframe>) and
+// the Print action, which prints an 80mm-wide roll receipt whose height is
+// exactly the content (no A4 trailing paper). All client-side: no server-side
+// PDF generation.
 //
-// Why HTML and not the PDF for printing: a PDF page can't be resized by CSS, so
+// Why HTML and not a PDF for printing: a PDF page can't be resized by CSS, so
 // the browser prints it onto the printer's default paper (A4) and ejects a full
 // blank sheet on a roll. An HTML document with `@page { size: 80mm auto }` tells
-// the browser the page IS 80mm wide and only as tall as the content. The WhatsApp
-// PDF (buildReceiptPdf) is already 80mm × content-height and is left unchanged.
+// the browser the page IS 80mm wide and only as tall as the content.
 import { type ReceiptData, receiptItemName } from "./receipt";
 import { amountToWords } from "./number-to-words";
 
@@ -26,8 +25,14 @@ const esc = (s: unknown) =>
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 
-/** Render the receipt as a self-contained HTML document sized for the roll. */
-export function receiptHtml(d: ReceiptData): string {
+/**
+ * Render the receipt as a self-contained HTML document sized for the roll.
+ *
+ * `autoPrint` (default true) injects the load→print→close script used by the
+ * Print action's pop-up window. Pass `false` to render the very same invoice as
+ * a passive preview (e.g. inside an <iframe srcDoc>) without triggering print.
+ */
+export function receiptHtml(d: ReceiptData, { autoPrint = true }: { autoPrint?: boolean } = {}): string {
   const rows = d.items
     .map((it, i) => {
       const name = esc(receiptItemName(it));
@@ -157,13 +162,13 @@ export function receiptHtml(d: ReceiptData): string {
     ${payRow}
     ${d.store.footer ? `<div class="center footer">${esc(d.store.footer)}</div>` : ""}
   </div>
-  <script>
+  ${autoPrint ? `<script>
     // Print as soon as content (incl. the logo image) has loaded, then close.
     window.addEventListener("load", function () {
       setTimeout(function () { window.focus(); window.print(); }, 50);
     });
     window.addEventListener("afterprint", function () { window.close(); });
-  </script>
+  </script>` : ""}
 </body>
 </html>`;
 }

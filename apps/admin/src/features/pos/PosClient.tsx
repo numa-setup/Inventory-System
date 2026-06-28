@@ -718,7 +718,6 @@ export function PosClient({
 
       <Receipt
         data={receiptData}
-        customerPhone={allCustomers.find((c) => c.id === customerId)?.phone}
         onClose={finishReceipt}
       />
 
