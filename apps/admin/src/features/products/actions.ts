@@ -195,7 +195,11 @@ export async function updateVariant(
   if (!v.success) return { error: firstIssue(v.error) };
   const db = createAdminClient();
 
+  // Cost is NEVER changed through the normal save — it only moves via purchases
+  // (the weighted-average ledger) or the audited correctVariantCost() flow, so a
+  // routine edit can't silently desync avg_cost or skip the owner gate.
   const patch: Record<string, unknown> = { ...rest };
+  delete patch.cost;
   if (sku !== undefined && sku.trim()) patch.sku = sku.trim();
   const { error } = await db.from("product_variants").update(patch).eq("id", id);
   if (error) {
@@ -222,6 +226,84 @@ export async function updateVariant(
 
   revalidateProductSurfaces();
   return { ok: true };
+}
+
+// ---- Correct a wrongly-entered cost price --------------------------------
+// Weighted-average cost normally comes from purchases and isn't editable. This
+// is the controlled exception for fixing a data-entry mistake. See migration
+// 0029: it updates the forward cost numbers (variant.cost + stock_levels.avg_cost)
+// and records an audit row, WITHOUT changing any past sale's snapshotted profit.
+
+export interface VariantCostContext {
+  /** True once the variant has any non-OPENING movement (sales/purchases/etc.) —
+   *  this is "Case B" and the correction becomes owner-only. */
+  hasHistory: boolean;
+  /** Static cost on the variant row (drives inventory valuation). */
+  cost: number;
+  /** Live weighted-average across physical stock (drives future POS COGS). */
+  avgCost: number;
+  onHand: number;
+  lastCorrection: { new_cost: number; reason: string | null; created_at: string } | null;
+}
+
+/** Read the cost context so the UI can show current figures and decide Case A vs B. */
+export async function getVariantCostContext(
+  variantId: string,
+): Promise<{ error: string } | ({ ok: true } & VariantCostContext)> {
+  if (!(await requireManager())) return { error: "Not authorized." };
+  const db = createAdminClient();
+  const [{ data: hist }, { data: v }, { data: av }, { data: last }] = await Promise.all([
+    db.from("stock_moves").select("id").eq("variant_id", variantId).neq("reference_type", "OPENING").limit(1),
+    db.from("product_variants").select("cost").eq("id", variantId).maybeSingle(),
+    db.from("variant_availability").select("avg_cost, on_hand").eq("variant_id", variantId).maybeSingle(),
+    db.from("cost_corrections").select("new_cost, reason, created_at").eq("variant_id", variantId).order("created_at", { ascending: false }).limit(1).maybeSingle(),
+  ]);
+  return {
+    ok: true as const,
+    hasHistory: (hist ?? []).length > 0,
+    cost: Number(v?.cost ?? 0),
+    avgCost: Number(av?.avg_cost ?? 0),
+    onHand: Number(av?.on_hand ?? 0),
+    lastCorrection: last ?? null,
+  };
+}
+
+/**
+ * Correct a variant's cost price.
+ *  - Case A (no sales/purchase history): owner OR manager may fix the initial cost.
+ *  - Case B (history exists): OWNER ONLY, and a reason is required.
+ * Past completed sales keep their original recorded profit (snapshotted COGS) —
+ * only the forward cost (valuation + future COGS) is corrected. Authoritative
+ * history/role checks happen here, not in the client.
+ */
+export async function correctVariantCost(variantId: string, newCost: number, reason: string) {
+  const user = await getCurrentUser();
+  if (!user || (user.role !== "owner" && user.role !== "manager")) return { error: "Not authorized." };
+  if (!Number.isFinite(newCost) || newCost < 0) return { error: "Enter a valid cost (0 or more)." };
+
+  const db = createAdminClient();
+  const { data: hist } = await db
+    .from("stock_moves").select("id").eq("variant_id", variantId).neq("reference_type", "OPENING").limit(1);
+  const hasHistory = (hist ?? []).length > 0;
+
+  if (hasHistory && user.role !== "owner") {
+    return { error: "This product already has sales/purchase history — only the owner can correct its cost." };
+  }
+  if (hasHistory && !reason.trim()) {
+    return { error: "Please add a short reason for the correction." };
+  }
+
+  const { data, error } = await db.rpc("correct_variant_cost", {
+    p_variant_id: variantId,
+    p_new_cost: newCost,
+    p_reason: reason.trim() || null,
+    p_created_by: user.id,
+  });
+  if (error) return { error: error.message };
+
+  revalidateProductSurfaces();
+  revalidatePath("/admin/reports");
+  return { ok: true as const, hadHistory: hasHistory, result: data };
 }
 
 // ---- Bulk CSV import (full products + opening stock) ---------------------

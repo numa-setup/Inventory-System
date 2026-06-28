@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Plus, Search, Package, Loader2, Barcode, ChevronRight, ChevronDown,
-  Pencil, Wand2, Layers, Tag, QrCode, Upload, Archive, ArchiveRestore, Trash2, AlertTriangle, ImagePlus, X,
+  Pencil, Wand2, Layers, Tag, QrCode, Upload, Archive, ArchiveRestore, Trash2, AlertTriangle, ImagePlus, X, Coins,
 } from "lucide-react";
 import { PageHeader } from "@hamza/shared/ui/PageHeader";
 import { Card } from "@hamza/shared/ui/Card";
@@ -13,12 +13,13 @@ import { Button } from "@hamza/shared/ui/Button";
 import { Input, Label, FieldError } from "@hamza/shared/ui/Input";
 import { Select } from "@hamza/shared/ui/Select";
 import { Drawer } from "@hamza/shared/ui/Drawer";
+import { ConfirmDialog } from "@hamza/shared/ui/ConfirmDialog";
 import { StatusPill } from "@hamza/shared/ui/StatusPill";
 import { EmptyState } from "@hamza/shared/ui/EmptyState";
 import { useToast } from "@hamza/shared/ui/Toast";
 import { ExportMenu } from "@hamza/shared/ui/ExportMenu";
 import { cn, formatPKR } from "@hamza/shared/utils";
-import { createProduct, updateProduct, updateVariant, bulkSetPrice, searchProducts, setProductActive, permanentlyDeleteProduct, uploadProductImage, uploadVariantImage, removeVariantImage, type ProductInput, type VariantInput } from "./actions";
+import { createProduct, updateProduct, updateVariant, bulkSetPrice, searchProducts, setProductActive, permanentlyDeleteProduct, uploadProductImage, uploadVariantImage, removeVariantImage, getVariantCostContext, correctVariantCost, type ProductInput, type VariantInput, type VariantCostContext } from "./actions";
 
 const UNIT_OPTIONS = ["pcs", "kg", "g", "litre", "ml", "pack", "dozen", "box", "metre"];
 import { PRODUCTS_PAGE_SIZE, type ProductRow, type VariantRow, type ProductsPage } from "@/lib/products-query";
@@ -80,6 +81,7 @@ export function ProductsClient({
   const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [editVariant, setEditVariant] = useState<VariantRow | null>(null);
+  const [correctCostFor, setCorrectCostFor] = useState<VariantRow | null>(null);
   const [labelTarget, setLabelTarget] = useState<LabelTarget | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<ProductRow | null>(null);
@@ -346,6 +348,15 @@ export function ProductsClient({
         variant={editVariant}
         onClose={() => setEditVariant(null)}
         onSaved={() => { setEditVariant(null); toast("Variant updated"); refreshList(); }}
+        onCorrectCost={() => editVariant && setCorrectCostFor(editVariant)}
+        onError={(m) => toast(m, "error")}
+      />
+
+      <CorrectCostDialog
+        variant={correctCostFor}
+        isOwner={isOwner}
+        onClose={() => setCorrectCostFor(null)}
+        onDone={(msg) => { setCorrectCostFor(null); setEditVariant(null); toast(msg); refreshList(); }}
         onError={(m) => toast(m, "error")}
       />
 
@@ -565,14 +576,15 @@ function ProductGroup({
 /* ---------------- Variant edit drawer ---------------- */
 
 function VariantEditDrawer({
-  variant, onClose, onSaved, onError,
+  variant, onClose, onSaved, onCorrectCost, onError,
 }: {
   variant: VariantRow | null;
   onClose: () => void;
   onSaved: () => void;
+  onCorrectCost: () => void;
   onError: (m: string) => void;
 }) {
-  const [form, setForm] = useState({ sku: "", barcode: "", sale_price: "", cost: "", reorder_point: "", disc_type: "" as DiscType, disc_value: "" });
+  const [form, setForm] = useState({ sku: "", barcode: "", sale_price: "", reorder_point: "", disc_type: "" as DiscType, disc_value: "" });
   const [saving, setSaving] = useState(false);
 
   // sync when a new variant is opened
@@ -583,7 +595,6 @@ function VariantEditDrawer({
       sku: variant.sku,
       barcode: variant.barcode ?? "",
       sale_price: String(variant.sale_price),
-      cost: String(variant.cost),
       reorder_point: String(variant.reorder_point),
       disc_type: (variant.default_discount_type ?? "") as DiscType,
       disc_value: variant.default_discount_value ? String(variant.default_discount_value) : "",
@@ -595,11 +606,12 @@ function VariantEditDrawer({
     if (!variant) return;
     if (!form.sku.trim()) return onError("SKU is required.");
     setSaving(true);
+    // Cost is intentionally NOT sent here — it changes only through purchases or
+    // the audited "Correct cost price" action (see CorrectCostDialog).
     const res = await updateVariant(variant.id, {
       sku: form.sku,
       barcode: form.barcode || null,
       sale_price: Number(form.sale_price) || 0,
-      cost: Number(form.cost) || 0,
       reorder_point: Number(form.reorder_point) || 0,
       default_discount_type: form.disc_type || null,
       default_discount_value: form.disc_type ? Number(form.disc_value) || 0 : 0,
@@ -642,7 +654,17 @@ function VariantEditDrawer({
           </div>
           <div>
             <Label>Cost price (₨)</Label>
-            <Input type="number" value={form.cost} onChange={(e) => setForm((f) => ({ ...f, cost: e.target.value }))} />
+            {/* Read-only: cost is driven by purchases (weighted-average). Fixing a
+                mistake goes through the audited "Correct" action, not a free edit. */}
+            <div className="flex h-[42px] items-center justify-between gap-2 rounded-lg border border-border bg-surface-2 px-3">
+              <span className="tnum text-sm font-medium text-text-primary">
+                {formatPKR(variant ? variant.avg_cost || variant.cost : 0)}
+              </span>
+              <button type="button" onClick={onCorrectCost} className="inline-flex items-center gap-1 text-xs font-semibold text-brand-600 hover:underline">
+                <Coins className="h-3.5 w-3.5" /> Correct
+              </button>
+            </div>
+            <p className="mt-1 text-xs text-text-tertiary">Set by purchases. Use “Correct” only to fix a wrong cost.</p>
           </div>
         </div>
         <div>
@@ -664,6 +686,122 @@ function VariantEditDrawer({
         </p>
       </form>
     </Drawer>
+  );
+}
+
+/* ---------------- Correct cost price (fix a data-entry mistake) ----------------
+   Weighted-average cost normally comes from purchases. This is the controlled
+   correction: it fixes the cost going forward (inventory value + FUTURE sales'
+   COGS) without altering the profit already recorded on past sales.
+   - Case A (no sales/purchase history): owner or manager may fix the initial cost.
+   - Case B (history exists): OWNER ONLY, with a required reason.                 */
+function CorrectCostDialog({
+  variant, isOwner, onClose, onDone, onError,
+}: {
+  variant: VariantRow | null;
+  isOwner: boolean;
+  onClose: () => void;
+  onDone: (msg: string) => void;
+  onError: (m: string) => void;
+}) {
+  const [ctx, setCtx] = useState<VariantCostContext | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [newCost, setNewCost] = useState("");
+  const [reason, setReason] = useState("");
+
+  useEffect(() => {
+    if (!variant) return;
+    let cancelled = false;
+    setLoading(true); setCtx(null); setReason(""); setNewCost("");
+    getVariantCostContext(variant.id).then((r) => {
+      if (cancelled) return;
+      setLoading(false);
+      if ("error" in r) { onError(r.error); onClose(); return; }
+      setCtx(r);
+      setNewCost(String(r.cost || r.avgCost || ""));
+    });
+    return () => { cancelled = true; };
+  }, [variant, onError, onClose]);
+
+  const caseB = ctx?.hasHistory ?? false;
+  const blocked = caseB && !isOwner; // history + not owner → read-only
+
+  async function submit() {
+    if (!variant || !ctx) return;
+    const n = Number(newCost);
+    if (!Number.isFinite(n) || n < 0) return onError("Enter a valid cost (0 or more).");
+    if (caseB && !reason.trim()) return onError("Please add a short reason for the correction.");
+    setSaving(true);
+    const res = await correctVariantCost(variant.id, n, reason);
+    setSaving(false);
+    if (res?.error) return onError(res.error);
+    onDone(res.hadHistory
+      ? "Cost corrected going forward — past sales’ profit is unchanged."
+      : "Cost price fixed.");
+  }
+
+  return (
+    <ConfirmDialog
+      open={!!variant}
+      onCancel={onClose}
+      onConfirm={blocked ? onClose : submit}
+      loading={saving}
+      tone={caseB ? "danger" : "default"}
+      icon={<Coins className="h-5 w-5" />}
+      title="Correct cost price"
+      confirmLabel={blocked ? "Close" : caseB ? "Correct cost" : "Save cost"}
+      cancelLabel={blocked ? "Cancel" : "Cancel"}
+      message={
+        loading || !ctx ? (
+          <span className="inline-flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Checking history…</span>
+        ) : (
+          <div className="space-y-3 text-left">
+            <div className="rounded-lg bg-surface-2 px-3 py-2 text-xs text-text-secondary">
+              <div className="flex justify-between"><span>Entered cost</span><b className="tnum text-text-primary">{formatPKR(ctx.cost)}</b></div>
+              <div className="flex justify-between"><span>Weighted-avg (stock)</span><b className="tnum text-text-primary">{formatPKR(ctx.avgCost)}</b></div>
+              <div className="flex justify-between"><span>On hand</span><b className="tnum text-text-primary">{ctx.onHand}</b></div>
+            </div>
+
+            {caseB ? (
+              <div className="rounded-lg bg-coral-tile px-3 py-2 text-xs text-coral-text">
+                This product already has sales/purchase history. Past sales keep their
+                recorded profit — this only fixes the cost used for stock value and
+                <b> future</b> sales.{!isOwner && " Only the owner can do this."}
+              </div>
+            ) : (
+              <div className="rounded-lg bg-brand-50 px-3 py-2 text-xs text-brand-600">
+                No purchases or sales yet — this safely fixes the initial (opening) cost.
+              </div>
+            )}
+
+            {!blocked && (
+              <>
+                <div>
+                  <Label>Corrected cost price (₨)</Label>
+                  <Input type="number" inputMode="decimal" value={newCost} autoFocus
+                    onChange={(e) => setNewCost(e.target.value)} />
+                </div>
+                {caseB && (
+                  <div>
+                    <Label>Reason *</Label>
+                    <Input value={reason} placeholder="e.g. wrong cost entered at setup"
+                      onChange={(e) => setReason(e.target.value)} />
+                  </div>
+                )}
+              </>
+            )}
+
+            {ctx.lastCorrection && (
+              <p className="text-[11px] text-text-tertiary">
+                Last corrected to {formatPKR(ctx.lastCorrection.new_cost)}
+                {ctx.lastCorrection.reason ? ` — “${ctx.lastCorrection.reason}”` : ""}.
+              </p>
+            )}
+          </div>
+        )
+      }
+    />
   );
 }
 
