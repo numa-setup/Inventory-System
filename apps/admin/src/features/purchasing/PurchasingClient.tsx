@@ -131,7 +131,7 @@ export function PurchasingClient({
       </Card>
 
       <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <StatTile label="Total Payables" value={formatPKR(kpis.payables, { compact: true })} fullValue={formatPKR(kpis.payables)} icon={Wallet} accent="coral" hint="What you owe suppliers" />
+        <StatTile label="Total Payables" value={formatPKR(kpis.payables, { compact: true })} fullValue={formatPKR(kpis.payables)} icon={Wallet} accent="coral" hint="What you owe suppliers" sensitive />
         <StatTile label="Suppliers" value={kpis.suppliers} icon={Truck} accent="blue" />
         <StatTile label="Open POs" value={kpis.openPOs} icon={FileText} accent="amber" hint="Pre-orders awaiting goods" />
       </div>

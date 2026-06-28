@@ -106,7 +106,7 @@ export function CustomersClient({ rows }: { rows: CustomerRow[] }) {
       />
 
       <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <StatTile label="Total Outstanding" value={formatPKR(totalOutstanding, { compact: true })} icon={Wallet} accent="coral" />
+        <StatTile label="Total Outstanding" value={formatPKR(totalOutstanding, { compact: true })} fullValue={formatPKR(totalOutstanding)} icon={Wallet} accent="coral" sensitive />
         <StatTile label="Customers with Udhaar" value={debtors} icon={BookUser} accent="amber" />
         <StatTile label="Total Customers" value={rows.length} icon={Users} accent="blue" />
       </div>

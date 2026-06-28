@@ -173,7 +173,7 @@ export function StockClient({
       )}
 
       <div className="mb-4 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatTile label="Stock Value" value={formatPKR(totalValue, { compact: true })} icon={Wallet} accent="blue" />
+        <StatTile label="Stock Value" value={formatPKR(totalValue, { compact: true })} fullValue={formatPKR(totalValue)} icon={Wallet} accent="blue" sensitive />
         <StatTile label="Low-stock" value={lowCount} icon={AlertTriangle} accent="amber" />
         <StatTile label="Out of stock" value={outCount} icon={PackageX} accent="coral" />
         <StatTile label="Variants" value={rows.length} icon={Layers} accent="teal" />

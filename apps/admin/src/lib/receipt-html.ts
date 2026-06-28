@@ -9,7 +9,7 @@
 // blank sheet on a roll. An HTML document with `@page { size: 80mm auto }` tells
 // the browser the page IS 80mm wide and only as tall as the content. The WhatsApp
 // PDF (buildReceiptPdf) is already 80mm × content-height and is left unchanged.
-import type { ReceiptData } from "./receipt";
+import { type ReceiptData, receiptItemName } from "./receipt";
 import { amountToWords } from "./number-to-words";
 
 // Thermal roll width. Default 80mm (printable ≈ 72mm). Switch to 58 for a 58mm
@@ -30,7 +30,7 @@ const esc = (s: unknown) =>
 export function receiptHtml(d: ReceiptData): string {
   const rows = d.items
     .map((it, i) => {
-      const name = esc(it.name + (it.label ? ` (${it.label})` : ""));
+      const name = esc(receiptItemName(it));
       const qty = esc(`${it.qty} ${(it.unit || "Pcs").trim()}`.trim());
       // Rate   = actual pre-discount unit price (R).
       // Disc   = total discount for the line across its qty (d×q) — a money amount.

@@ -24,7 +24,7 @@ export interface ReportData {
   key: string;
   title: string;
   subtitle?: string;
-  kpis: { label: string; value: string; accent: Accent }[];
+  kpis: { label: string; value: string; accent: Accent; sensitive?: boolean; fullValue?: string }[];
   charts: ReportChart[];
   columns: ReportColumn[];
   rows: Record<string, unknown>[];
@@ -278,10 +278,10 @@ async function salesReport(supabase: Supabase, range: DateRange, params: URLSear
   return {
     key: "sales", title: "Sales Report", subtitle: range.label,
     kpis: [
-      { label: "Total Sales", value: formatPKR(totalSales, { compact: true }), accent: "blue" },
-      { label: "Profit", value: formatPKR(totalProfit, { compact: true }), accent: "green" },
+      { label: "Total Sales", value: formatPKR(totalSales, { compact: true }), fullValue: formatPKR(totalSales), accent: "blue", sensitive: true },
+      { label: "Profit", value: formatPKR(totalProfit, { compact: true }), fullValue: formatPKR(totalProfit), accent: "green", sensitive: true },
       { label: "Transactions", value: formatNumber(count), accent: "purple" },
-      { label: "Avg Basket", value: formatPKR(count ? totalSales / count : 0), accent: "teal" },
+      { label: "Avg Basket", value: formatPKR(count ? totalSales / count : 0), accent: "teal", sensitive: true },
     ],
     charts: [{ ...chart, title: "Sales trend" }],
     columns, rows,
@@ -324,10 +324,10 @@ async function profitReport(supabase: Supabase, range: DateRange): Promise<Repor
   return {
     key: "profit", title: "Profit & Margin", subtitle: range.label,
     kpis: [
-      { label: "Revenue", value: formatPKR(revenue, { compact: true }), accent: "blue" },
-      { label: "COGS", value: formatPKR(cogs, { compact: true }), accent: "amber" },
-      { label: "Gross Profit", value: formatPKR(profit, { compact: true }), accent: "green" },
-      { label: "Margin", value: `${margin.toFixed(1)}%`, accent: "teal" },
+      { label: "Revenue", value: formatPKR(revenue, { compact: true }), fullValue: formatPKR(revenue), accent: "blue", sensitive: true },
+      { label: "COGS", value: formatPKR(cogs, { compact: true }), fullValue: formatPKR(cogs), accent: "amber", sensitive: true },
+      { label: "Gross Profit", value: formatPKR(profit, { compact: true }), fullValue: formatPKR(profit), accent: "green", sensitive: true },
+      { label: "Margin", value: `${margin.toFixed(1)}%`, accent: "teal", sensitive: true },
     ],
     charts: [{ ...trend(range, [
       ...sales.map((s) => ({ created_at: s.created_at, value: Number(s.profit) })),
@@ -380,7 +380,7 @@ async function inventoryReport(supabase: Supabase, range: DateRange): Promise<Re
   return {
     key: "inventory", title: "Inventory Valuation", subtitle: `as of ${range.label}`,
     kpis: [
-      { label: "Stock Value", value: formatPKR(totalValue, { compact: true }), accent: "blue" },
+      { label: "Stock Value", value: formatPKR(totalValue, { compact: true }), fullValue: formatPKR(totalValue), accent: "blue", sensitive: true },
       { label: "Total Units", value: formatNumber(totalUnits), accent: "teal" },
       { label: "Variants", value: formatNumber(rows.length), accent: "purple" },
       { label: "Out of stock", value: formatNumber(outCount), accent: "coral" },
@@ -475,7 +475,7 @@ async function stockInReport(supabase: Supabase, range: DateRange, params: URLSe
     kpis: [
       { label: "Additions", value: formatNumber(rows.length), accent: "blue" },
       { label: "Units added", value: formatNumber(totalQty), accent: "teal" },
-      { label: "Cost value", value: formatPKR(totalValue, { compact: true }), accent: "amber" },
+      { label: "Cost value", value: formatPKR(totalValue, { compact: true }), fullValue: formatPKR(totalValue), accent: "amber", sensitive: true },
       { label: "Products", value: formatNumber(new Set(rows.map((r) => r.product)).size), accent: "purple" },
     ],
     charts: [{ ...trend(range, rows.map((r) => ({ created_at: r.created_at, value: r.qty })), "teal", "qty"), type: "bar", title: "Units added" }],
@@ -545,7 +545,7 @@ async function productsReport(supabase: Supabase, range: DateRange, params: URLS
       { label: "Variants sold", value: formatNumber([...sold.values()].filter((s) => s.qty > 0).length), accent: "blue" },
       { label: "Dead stock", value: formatNumber(variants.filter((v) => !(gross.get(v.variant_id)?.qty) && (availMap.get(v.variant_id) ?? 0) > 0).length), accent: "coral" },
       { label: "Units sold", value: formatNumber([...sold.values()].reduce((s, x) => s + x.qty, 0)), accent: "teal" },
-      { label: "Revenue", value: formatPKR([...sold.values()].reduce((s, x) => s + x.revenue, 0), { compact: true }), accent: "green" },
+      { label: "Revenue", value: formatPKR([...sold.values()].reduce((s, x) => s + x.revenue, 0), { compact: true }), fullValue: formatPKR([...sold.values()].reduce((s, x) => s + x.revenue, 0)), accent: "green", sensitive: true },
     ],
     charts: [{ type: "bar", title: "Top sellers by revenue", data: bestForChart, dataKey: "revenue", accent: "blue" }],
     columns: [
@@ -584,9 +584,9 @@ async function purchasesReport(supabase: Supabase, range: DateRange): Promise<Re
   return {
     key: "purchases", title: "Purchases & Suppliers", subtitle: range.label,
     kpis: [
-      { label: "Spend (period)", value: formatPKR(totalSpend, { compact: true }), accent: "blue" },
+      { label: "Spend (period)", value: formatPKR(totalSpend, { compact: true }), fullValue: formatPKR(totalSpend), accent: "blue", sensitive: true },
       { label: "Receipts", value: formatNumber((receipts ?? []).length), accent: "purple" },
-      { label: "Total Payable", value: formatPKR(totalPayable, { compact: true }), accent: "coral" },
+      { label: "Total Payable", value: formatPKR(totalPayable, { compact: true }), fullValue: formatPKR(totalPayable), accent: "coral", sensitive: true },
       { label: "Suppliers", value: formatNumber((suppliers ?? []).length), accent: "teal" },
     ],
     charts: [{ type: "bar", title: "Spend by supplier", accent: "blue", dataKey: "spend",
@@ -636,9 +636,9 @@ async function customersReport(supabase: Supabase, range: DateRange): Promise<Re
   return {
     key: "customers", title: "Customers & Udhaar", subtitle: range.label,
     kpis: [
-      { label: "Outstanding Udhaar", value: formatPKR(totalOutstanding, { compact: true }), accent: "coral" },
+      { label: "Outstanding Udhaar", value: formatPKR(totalOutstanding, { compact: true }), fullValue: formatPKR(totalOutstanding), accent: "coral", sensitive: true },
       { label: "On Khata", value: formatNumber((customers ?? []).filter((c) => Number(c.credit_balance) > 0).length), accent: "amber" },
-      { label: "Sales (period)", value: formatPKR(sales.reduce((s, x) => s + Number(x.total), 0) - returns.totalRevenue, { compact: true }), accent: "blue" },
+      { label: "Sales (period)", value: formatPKR(sales.reduce((s, x) => s + Number(x.total), 0) - returns.totalRevenue, { compact: true }), fullValue: formatPKR(sales.reduce((s, x) => s + Number(x.total), 0) - returns.totalRevenue), accent: "blue", sensitive: true },
       { label: "Customers", value: formatNumber((customers ?? []).length), accent: "teal" },
     ],
     charts: [{ type: "bar", title: "Top customers by sales", accent: "teal", dataKey: "sales",
@@ -756,12 +756,12 @@ async function systemReport(supabase: Supabase, range: DateRange): Promise<Repor
   return {
     key: "system", title: "Full System Report", subtitle: range.label,
     kpis: [
-      { label: "Sales", value: formatPKR(revenue, { compact: true }), accent: "blue" },
-      { label: "Profit", value: formatPKR(profit, { compact: true }), accent: "green" },
+      { label: "Sales", value: formatPKR(revenue, { compact: true }), fullValue: formatPKR(revenue), accent: "blue", sensitive: true },
+      { label: "Profit", value: formatPKR(profit, { compact: true }), fullValue: formatPKR(profit), accent: "green", sensitive: true },
       { label: "Online Orders", value: formatNumber(orderCount ?? 0), accent: "purple" },
-      { label: "Stock Value", value: formatPKR(stockValue, { compact: true }), accent: "teal" },
-      { label: "Payables", value: formatPKR(payables, { compact: true }), accent: "coral" },
-      { label: "Udhaar", value: formatPKR(udhaar, { compact: true }), accent: "amber" },
+      { label: "Stock Value", value: formatPKR(stockValue, { compact: true }), fullValue: formatPKR(stockValue), accent: "teal", sensitive: true },
+      { label: "Payables", value: formatPKR(payables, { compact: true }), fullValue: formatPKR(payables), accent: "coral", sensitive: true },
+      { label: "Udhaar", value: formatPKR(udhaar, { compact: true }), fullValue: formatPKR(udhaar), accent: "amber", sensitive: true },
     ],
     charts: [
       { ...trend(range, [

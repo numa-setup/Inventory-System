@@ -1,5 +1,5 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage, type PDFImage } from "pdf-lib";
-import type { ReceiptData } from "./receipt";
+import { type ReceiptData, receiptItemName } from "./receipt";
 import { amountToWords } from "./number-to-words";
 
 // Logo box at the top of the invoice header (keeps aspect ratio inside it).
@@ -137,7 +137,7 @@ export async function buildReceiptPdf(d: ReceiptData): Promise<Uint8Array> {
 
   // ---- Pre-measure the rows so the page height is exact ----
   const rows = d.items.map((it, i) => {
-    const name = it.name + (it.label ? ` (${it.label})` : "");
+    const name = receiptItemName(it);
     const nameLines = wrap(reg, BODY, name, COL.name - 6);
     // Rate = pre-discount unit price (R); Disc = total line discount (d×q);
     // D.Rate = discounted unit price (R − d); Total = (R − d)×q = after-discount

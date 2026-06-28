@@ -15,6 +15,18 @@ export interface ReceiptItem {
   line_total: number;
 }
 
+/**
+ * Compose the item name shown on the invoice. A variant label is appended in
+ * parentheses (e.g. "Soap (500g)") EXCEPT the synthetic "Default" label used for
+ * single-variant products — those just show the bare product name. Display only;
+ * no pricing/stock data is involved.
+ */
+export function receiptItemName(item: Pick<ReceiptItem, "name" | "label">): string {
+  const label = item.label?.trim();
+  const showLabel = label && label !== "Default";
+  return showLabel ? `${item.name} (${label})` : item.name;
+}
+
 export interface ReceiptStore {
   name: string;
   address?: string;

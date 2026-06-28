@@ -59,6 +59,19 @@ describe("receiptHtml (80mm thermal sizing)", () => {
     expect(html).toContain("Net Total:</span><span>Rs 800");
   });
 
+  it("hides the synthetic 'Default' variant label but keeps real ones", () => {
+    const html = receiptHtml({
+      ...base,
+      items: [
+        { name: "Soap", label: "Default", qty: 1, unit: "Pcs", unit_price: 600, line_total: 600 },
+        { name: "Tea", label: "200g", qty: 1, unit: "Pcs", unit_price: 540, line_total: 540 },
+      ],
+    });
+    expect(html).not.toContain("Default");
+    expect(html).toContain("Soap"); // bare product name, no "(Default)"
+    expect(html).toContain("Tea (200g)"); // real label preserved
+  });
+
   it("starts at the very top and has no top/bottom padding band", () => {
     const html = receiptHtml(base);
     expect(html).toMatch(/padding:\s*0\s+3\.5mm\s+0;/); // .receipt: no top/bottom pad

@@ -86,7 +86,7 @@ export function ReportsClient({ reportKey, data }: { reportKey: string; data: Re
 
       {/* KPIs */}
       <div className={cn("mb-4 grid grid-cols-2 gap-4", data.kpis.length >= 6 ? "lg:grid-cols-6" : "lg:grid-cols-4")}>
-        {data.kpis.map((k) => <StatTile key={k.label} label={k.label} value={k.value} icon={BarChart3} accent={k.accent} />)}
+        {data.kpis.map((k) => <StatTile key={k.label} label={k.label} value={k.value} fullValue={k.fullValue} icon={BarChart3} accent={k.accent} sensitive={k.sensitive} />)}
       </div>
 
       {/* charts */}
