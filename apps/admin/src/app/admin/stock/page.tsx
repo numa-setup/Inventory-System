@@ -16,9 +16,15 @@ export default async function StockPage() {
     { data: availability }, { data: levels }, { data: locations },
     { data: optionValues }, { data: vov },
   ] = await Promise.all([
+    // Active variants only; archived products (products.active = false) are
+    // inactive — they must not appear in stock, the low-stock tile, or the
+    // low_stock filter the dashboard deep-links to. The product's `active` is
+    // pulled through the embed and re-checked below (a variant can be active
+    // under an archived product).
     supabase
       .from("product_variants")
-      .select("id, product_id, sku, reorder_point, is_default, products(name, base_unit, category_id), product_barcodes(barcode, is_primary)"),
+      .select("id, product_id, sku, reorder_point, is_default, products(name, base_unit, category_id, active), product_barcodes(barcode, is_primary)")
+      .eq("active", true),
     supabase.from("categories").select("id, name, parent_id"),
     supabase.from("variant_availability").select("variant_id, on_hand, reserved, available, avg_cost"),
     supabase.from("stock_levels").select("variant_id, location_id, on_hand"),
@@ -51,9 +57,18 @@ export default async function StockPage() {
     byLoc.set(l.variant_id, m);
   }
 
-  const rows: StockRow[] = (variants ?? []).map((v) => {
-    const prod = v.products as { name: string; base_unit: string; category_id: string | null } | { name: string; base_unit: string; category_id: string | null }[] | null;
-    const p = Array.isArray(prod) ? prod[0] ?? null : prod;
+  type Prod = { name: string; base_unit: string; category_id: string | null; active: boolean };
+  const productOf = (v: { products: unknown }) => {
+    const prod = v.products as Prod | Prod[] | null;
+    return Array.isArray(prod) ? prod[0] ?? null : prod;
+  };
+
+  const rows: StockRow[] = (variants ?? [])
+    // Drop archived products (products.active = false) — inactive, so never part
+    // of the active stock view, its low-stock tile, or the low_stock filter.
+    .filter((v) => { const p = productOf(v); return p != null && p.active !== false; })
+    .map((v) => {
+    const p = productOf(v);
     const bcs = (v.product_barcodes ?? []) as { barcode: string; is_primary: boolean }[];
     // primary barcode if one exists, else the first — matches the old map's pick.
     const barcode = bcs.find((b) => b.is_primary)?.barcode ?? bcs[0]?.barcode ?? null;
