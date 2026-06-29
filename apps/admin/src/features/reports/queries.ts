@@ -714,7 +714,10 @@ async function systemReport(supabase: Supabase, range: DateRange): Promise<Repor
   // Net of counter returns so the headline + every breakdown agrees with the Sales tab.
   const revenue = sales.reduce((s, x) => s + Number(x.total), 0) + web.reduce((s, x) => s + x.total, 0) - returns.totalRevenue;
   const profit = sales.reduce((s, x) => s + Number(x.profit), 0) + web.reduce((s, x) => s + x.profit, 0) - returns.totalProfit;
-  const stockValue = (avail ?? []).reduce((s, a) => { const v = vMap.get(a.variant_id); return s + Number(a.on_hand) * (v?.cost ?? 0); }, 0);
+  // Active inventory only: vMap holds active variants (archived products are
+  // excluded by getVariantOptions), so skip any variant absent from it — keeps
+  // this figure consistent with the dashboard and Inventory Valuation report.
+  const stockValue = (avail ?? []).reduce((s, a) => { const v = vMap.get(a.variant_id); return v ? s + Number(a.on_hand) * v.cost : s; }, 0);
   const payables = (suppliers ?? []).reduce((s, x) => s + Math.max(Number(x.balance), 0), 0);
   const udhaar = (customers ?? []).reduce((s, x) => s + Math.max(Number(x.credit_balance), 0), 0);
 

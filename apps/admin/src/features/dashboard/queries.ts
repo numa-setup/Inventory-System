@@ -76,7 +76,10 @@ export async function buildDashboard(supabase: Supabase, range: DateRange): Prom
   const totalProfit = (sales ?? []).reduce((s, x) => s + Number(x.profit), 0) - retProfit;
   const ordersInRange = (orders ?? []).filter((o) => o.created_at >= iso(range.from) && o.created_at <= iso(range.to)).length;
   const availMap = new Map((avail ?? []).map((a) => [a.variant_id, a]));
-  const stockValue = (avail ?? []).reduce((s, a) => { const v = vMap.get(a.variant_id); return s + Number(a.on_hand) * (v?.cost ?? 0); }, 0);
+  // Stock value counts active inventory only — vMap holds active variants
+  // (getVariantOptions excludes archived products), so a variant missing from it
+  // is archived and is skipped, matching the Inventory Valuation report.
+  const stockValue = (avail ?? []).reduce((s, a) => { const v = vMap.get(a.variant_id); return v ? s + Number(a.on_hand) * v.cost : s; }, 0);
   const udhaar = (customers ?? []).reduce((s, c) => s + Math.max(Number(c.credit_balance), 0), 0);
 
   // trend (sales + profit)
