@@ -5,6 +5,7 @@ import { createClient as createSupabaseJs } from "@supabase/supabase-js";
 import { createAdminClient } from "@hamza/shared/supabase/admin";
 import { createClient } from "@hamza/shared/supabase/server";
 import { getCurrentUser } from "@hamza/shared/auth";
+import { selectAll } from "@/lib/fetch-all";
 
 async function requireOwner() {
   const user = await getCurrentUser();
@@ -192,11 +193,12 @@ export async function changePassword(currentPassword: string, newPassword: strin
 export async function exportProductsCSV(): Promise<{ csv: string } | { error: string }> {
   if (!(await requireOwner())) return { error: "Only the owner can export data." };
   const db = createAdminClient();
+  // Paged so a full backup export never stops at the 1000-row cap.
   const [{ data: variants }, { data: products }, { data: avail }, { data: barcodes }] = await Promise.all([
-    db.from("product_variants").select("id, product_id, sku, cost, sale_price"),
-    db.from("products").select("id, name"),
-    db.from("variant_availability").select("variant_id, on_hand"),
-    db.from("product_barcodes").select("variant_id, barcode, is_primary"),
+    selectAll((from, to) => db.from("product_variants").select("id, product_id, sku, cost, sale_price").order("id").range(from, to)),
+    selectAll((from, to) => db.from("products").select("id, name").order("id").range(from, to)),
+    selectAll((from, to) => db.from("variant_availability").select("variant_id, on_hand").order("variant_id").range(from, to)),
+    selectAll((from, to) => db.from("product_barcodes").select("variant_id, barcode, is_primary").order("id").range(from, to)),
   ]);
   const pName = new Map((products ?? []).map((p) => [p.id, p.name]));
   const onHand = new Map((avail ?? []).map((a) => [a.variant_id, Number(a.on_hand)]));

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Search, ShoppingCart, Plus, Minus, Trash2, X, Banknote,
   Loader2, Package, ScanLine, Camera, CheckCircle2, AlertTriangle, RotateCcw,
@@ -126,7 +127,16 @@ export function PosClient({
   categoryParents?: Record<string, string | null>;
 }) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const toast = useToast();
+
+  // A completed sale (or synced offline sale) changed on-hand in the DB. Besides
+  // re-rendering server components (router.refresh), drop the session-cached
+  // ["products"] TanStack data so the Products tab reflects the new stock the
+  // moment the cashier switches to it — no manual refresh.
+  const invalidateStockViews = () => {
+    queryClient.invalidateQueries({ queryKey: ["products"] });
+  };
 
   // Local catalogue cache: instant scan/search, live stock, works offline.
   // Falls back to the server-rendered props until the cache has hydrated.
@@ -397,6 +407,7 @@ export function PosClient({
       finishSale(makeReceipt(res.receipt_no, res.subtotal, res.discount, res.tax, res.total));
       void ensureCatalog({ force: true });
       router.refresh();
+      invalidateStockViews();
     } catch {
       // network unreachable — queue locally and print a provisional receipt
       await enqueueSale({ idempotency_key: idemKey.current, ts: Date.now(), payload });
@@ -435,6 +446,7 @@ export function PosClient({
       await refreshQueue();
       void ensureCatalog({ force: true });
       router.refresh();
+      invalidateStockViews();
     }
   }
 

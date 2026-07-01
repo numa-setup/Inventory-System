@@ -182,6 +182,21 @@ export function ProductsClient({
     staleTime: 10_000,
   });
 
+  // Trust fresh server data on navigation. The global QueryClient keeps the
+  // ["products"] cache for the whole session (gcTime 30m, refetchOnMount:false),
+  // so after a POS sale or a stock write — which server-revalidate this route —
+  // a re-navigated Products tab would otherwise keep showing the STALE cached
+  // on-hand. Because the SSR page always re-renders `initialPage` from the DB
+  // after those writes, we overwrite the default-view cache with it on mount,
+  // so on-hand reflects the sale immediately without a manual refresh.
+  const seededPage = useRef<ProductsPage | null>(null);
+  useEffect(() => {
+    if (isDefaultView && seededPage.current !== initialPage) {
+      seededPage.current = initialPage;
+      queryClient.setQueryData(["products", "", ""], { pages: [initialPage], pageParams: [0] });
+    }
+  }, [isDefaultView, initialPage, queryClient]);
+
   const filtered = useMemo(() => data?.pages.flatMap((p) => p.rows) ?? initialPage.rows, [data, initialPage.rows]);
   const total = data?.pages[0]?.total ?? initialPage.total;
 

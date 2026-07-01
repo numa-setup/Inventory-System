@@ -30,7 +30,7 @@ function makeClient(tables: Record<string, unknown[]>) {
   const builder = (rows: unknown[]) => {
     const b: Record<string, unknown> = {};
     const chain = () => b;
-    for (const m of ["select", "eq", "gte", "lte", "in", "order", "not"]) b[m] = chain;
+    for (const m of ["select", "eq", "gte", "lte", "in", "order", "not", "range"]) b[m] = chain;
     b.maybeSingle = () => Promise.resolve({ data: rows[0] ?? null, error: null });
     b.single = () => Promise.resolve({ data: rows[0] ?? null, error: null });
     b.then = (resolve: (v: unknown) => unknown) => resolve({ data: rows, count: rows.length, error: null });

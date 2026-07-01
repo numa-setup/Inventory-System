@@ -1,7 +1,8 @@
 import type { createClient } from "@hamza/shared/supabase/server";
 import type { Accent } from "@hamza/shared/ui/accent";
 import type { DimensionFilter } from "@hamza/shared/ui/FilterBar";
-import { getVariantOptions } from "@/lib/catalog";
+import { getVariantOptions, getVariantNames } from "@/lib/catalog";
+import { fetchAll, selectAll } from "@/lib/fetch-all";
 import { formatPKR, formatNumber } from "@hamza/shared/utils";
 import { bucketKey, bucketOf, type DateRange } from "@hamza/shared/dates";
 import { format } from "date-fns";
@@ -352,10 +353,14 @@ async function inventoryReport(supabase: Supabase, range: DateRange): Promise<Re
   // reconstruct on-hand as of range.to from the ledger (physical legs only)
   const { data: physLocs } = await supabase.from("locations").select("id").eq("type", "PHYSICAL");
   const physIds = new Set((physLocs ?? []).map((l) => l.id));
-  const { data: moves } = await supabase
-    .from("stock_moves")
-    .select("variant_id, qty, from_location_id, to_location_id, created_at")
-    .lte("created_at", iso(range.to));
+  // Paged: the whole ledger up to range.to can exceed 1000 moves, and a truncated
+  // read would understate reconstructed on-hand.
+  const moves = await fetchAll<{ variant_id: string; qty: number; from_location_id: string | null; to_location_id: string | null; created_at: string }>(
+    (from, to) => supabase
+      .from("stock_moves")
+      .select("variant_id, qty, from_location_id, to_location_id, created_at")
+      .lte("created_at", iso(range.to))
+      .order("id").range(from, to));
   const onHand = new Map<string, number>();
   for (const m of moves ?? []) {
     if (physIds.has(m.to_location_id)) onHand.set(m.variant_id, (onHand.get(m.variant_id) ?? 0) + Number(m.qty));
@@ -434,23 +439,25 @@ async function stockInReport(supabase: Supabase, range: DateRange, params: URLSe
   const supName = new Map((suppliers ?? []).map((s) => [s.id, s.name as string]));
 
   const variants = await getVariantOptions(supabase);
-  const vMap = new Map(variants.map((v) => [v.variant_id, v]));
+  // Names resolve from the FULL catalogue (incl. archived) so a historical
+  // stock-addition row never renders blank after its product is archived.
+  const nameMap = await getVariantNames(supabase);
   const catName = await categoryNames(supabase);
   const profiles = await profileNames(supabase);
 
   type Add = Record<string, unknown> & { _cat: string | null; _sup: string; created_at: string; qty: number; value: number; product: string };
   let rows: Add[] = (moves ?? []).map((m) => {
-    const v = vMap.get(m.variant_id);
+    const nm = nameMap.get(m.variant_id);
     const supplierId = m.reference_id ? (grnSupplier.get(m.reference_id) ?? null) : null;
     const supplier = supplierId ? (supName.get(supplierId) ?? "—") : (m.reference_type === "OPENING" ? "Opening stock" : "—");
     const qty = Number(m.qty);
     const cost = Number(m.unit_cost ?? 0);
     return {
-      _cat: v?.category_id ?? null,
+      _cat: nm?.category_id ?? null,
       _sup: supplierId ?? "",
       created_at: m.created_at,
       datetime: format(new Date(m.created_at), "d MMM yyyy, h:mm a"),
-      product: v ? `${v.product_name} · ${v.label}` : "—",
+      product: nm ? `${nm.product_name} · ${nm.label}` : "—",
       qty, cost, value: qty * cost, supplier,
       user: m.created_by ? (profiles.get(m.created_by) ?? "—") : "—",
     };
@@ -504,7 +511,7 @@ async function productsReport(supabase: Supabase, range: DateRange, params: URLS
   const { items } = await fetchSales(supabase, range);
   const returns = await fetchReturns(supabase, range);
   const variants = await getVariantOptions(supabase);
-  const { data: avail } = await supabase.from("variant_availability").select("variant_id, on_hand");
+  const { data: avail } = await selectAll<{ variant_id: string; on_hand: number }>((from, to) => supabase.from("variant_availability").select("variant_id, on_hand").order("variant_id").range(from, to));
   const availMap = new Map((avail ?? []).map((a) => [a.variant_id, Number(a.on_hand)]));
 
   // Gross units/revenue/profit per variant — used ONLY for the unchanged Dead-stock
@@ -703,7 +710,7 @@ async function systemReport(supabase: Supabase, range: DateRange): Promise<Repor
   const vMap = new Map(variants.map((v) => [v.variant_id, v]));
   const catName = await categoryNames(supabase);
   const [{ data: avail }, { data: suppliers }, { data: customers }, { count: orderCount }] = await Promise.all([
-    supabase.from("variant_availability").select("variant_id, on_hand"),
+    selectAll<{ variant_id: string; on_hand: number }>((from, to) => supabase.from("variant_availability").select("variant_id, on_hand").order("variant_id").range(from, to)),
     supabase.from("suppliers").select("balance"),
     supabase.from("customers").select("credit_balance"),
     supabase.from("orders").select("id", { count: "exact", head: true }).gte("created_at", iso(range.from)).lte("created_at", iso(range.to)),

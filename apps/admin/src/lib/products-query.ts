@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { selectAll } from "./fetch-all";
 
 // Server-side paginated products query. Both the SSR page (first page) and the
 // "load more" / search server action call this, so a product list never loads
@@ -104,7 +105,9 @@ export async function fetchProductsPage(supabase: SupabaseClient<any>, params: P
       .in("product_id", ids)
       .order("is_default", { ascending: false }),
     supabase.from("product_options").select("id, product_id, name, sort").in("product_id", ids).order("sort"),
-    supabase.from("product_option_values").select("id, option_id, value, sort"),
+    // Paged so option-value labels stay complete once the catalogue's variant
+    // options exceed 1000 rows overall.
+    selectAll((from, to) => supabase.from("product_option_values").select("id, option_id, value, sort").order("id").range(from, to)),
   ]);
 
   const variantIds = (variants ?? []).map((v) => v.id as string);

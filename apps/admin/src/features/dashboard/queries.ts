@@ -1,5 +1,6 @@
 import type { createClient } from "@hamza/shared/supabase/server";
 import { getVariantOptions } from "@/lib/catalog";
+import { selectAll } from "@/lib/fetch-all";
 import { bucketKey, bucketOf, type DateRange } from "@hamza/shared/dates";
 
 type Supabase = Awaited<ReturnType<typeof createClient>>;
@@ -35,11 +36,11 @@ export async function buildDashboard(supabase: Supabase, range: DateRange): Prom
     supabase.from("categories").select("id, name"),
     supabase.from("sales").select("id, total, profit, created_at").gte("created_at", iso(range.from)).lte("created_at", iso(range.to)),
     supabase.from("orders").select("id, order_no, customer_name, total, status, payment_type, created_at").order("created_at", { ascending: false }).limit(200),
-    supabase.from("variant_availability").select("variant_id, on_hand, available"),
+    selectAll((from, to) => supabase.from("variant_availability").select("variant_id, on_hand, available").order("variant_id").range(from, to)),
     supabase.from("customers").select("id, name, credit_balance"),
     supabase.from("suppliers").select("id, name, balance"),
     supabase.from("sale_returns").select("id, created_at").gte("created_at", iso(range.from)).lte("created_at", iso(range.to)),
-    supabase.from("product_variants").select("id, reorder_point"),
+    selectAll((from, to) => supabase.from("product_variants").select("id, reorder_point").order("id").range(from, to)),
     supabase.from("lots").select("id, variant_id, lot_number, expiry_date").not("expiry_date", "is", null),
     supabase.from("stock_levels").select("lot_id, on_hand").not("lot_id", "is", null),
   ]);

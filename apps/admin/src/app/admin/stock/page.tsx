@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { createClient } from "@hamza/shared/supabase/server";
+import { selectAll } from "@/lib/fetch-all";
 import { StockClient, type StockRow, type PhysLocation } from "@/features/stock/StockClient";
 
 export const metadata: Metadata = { title: "Stock" };
@@ -21,16 +22,17 @@ export default async function StockPage() {
     // low_stock filter the dashboard deep-links to. The product's `active` is
     // pulled through the embed and re-checked below (a variant can be active
     // under an archived product).
-    supabase
+    // Paged so >1000 variants / >1000 stock-level rows never truncate.
+    selectAll((from, to) => supabase
       .from("product_variants")
       .select("id, product_id, sku, reorder_point, is_default, products(name, base_unit, category_id, active), product_barcodes(barcode, is_primary)")
-      .eq("active", true),
+      .eq("active", true).order("id").range(from, to)),
     supabase.from("categories").select("id, name, parent_id"),
-    supabase.from("variant_availability").select("variant_id, on_hand, reserved, available, avg_cost"),
-    supabase.from("stock_levels").select("variant_id, location_id, on_hand"),
+    selectAll((from, to) => supabase.from("variant_availability").select("variant_id, on_hand, reserved, available, avg_cost").order("variant_id").range(from, to)),
+    selectAll((from, to) => supabase.from("stock_levels").select("variant_id, location_id, on_hand").order("variant_id").order("location_id").range(from, to)),
     supabase.from("locations").select("id, code, name, type").eq("type", "PHYSICAL").order("code"),
-    supabase.from("product_option_values").select("id, value"),
-    supabase.from("variant_option_values").select("variant_id, option_value_id"),
+    selectAll((from, to) => supabase.from("product_option_values").select("id, value").order("id").range(from, to)),
+    selectAll((from, to) => supabase.from("variant_option_values").select("variant_id, option_value_id").order("variant_id").order("option_value_id").range(from, to)),
   ]);
 
   const catName = new Map((categories ?? []).map((c) => [c.id, c.name]));

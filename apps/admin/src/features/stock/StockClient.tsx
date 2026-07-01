@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Search, Loader2, Wallet, PackageX, Layers, AlertTriangle, Info, X,
   PackagePlus, SlidersHorizontal, ArrowLeftRight, ClipboardCheck, History,
@@ -66,6 +67,7 @@ export function StockClient({
   locations: PhysLocation[];
 }) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const sp = useSearchParams();
   const toast = useToast();
   const [q, setQ] = useState("");
@@ -258,7 +260,7 @@ export function StockClient({
           rows={rows}
           locations={locations}
           onClose={() => setAction(null)}
-          onDone={(msg) => { setAction(null); toast(msg); router.refresh(); }}
+          onDone={(msg) => { setAction(null); toast(msg); router.refresh(); queryClient.invalidateQueries({ queryKey: ["products"] }); }}
           onError={(m) => toast(m, "error")}
         />
       )}
